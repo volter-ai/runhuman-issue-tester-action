@@ -1,5 +1,5 @@
 import * as core from '@actions/core';
-import type { QATestResponse, AnalyzeIssueResponse, LinkedIssue } from '../types';
+import type { QATestResponse, AnalyzeIssueResponse, LinkedIssue, PlaywrightData } from '../types';
 
 interface CreateJobRequest {
   url: string;
@@ -248,6 +248,7 @@ export async function runQATest(
     costUsd: finalStatus.costUsd,
     testDurationSeconds: finalStatus.testDurationSeconds,
     jobId: finalStatus.id,
+    testerData: finalStatus.testerData as PlaywrightData | undefined,
   };
 
   if (finalStatus.status === 'completed') {
