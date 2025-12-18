@@ -224,7 +224,8 @@ async function processIssue(
       inputs.apiKey,
       inputs.apiUrl,
       analysis,
-      inputs.targetDurationMinutes
+      inputs.targetDurationMinutes,
+      issue
     );
     result.testResult = testResult;
     result.status = 'tested';

@@ -1,11 +1,12 @@
 import * as core from '@actions/core';
-import type { QATestResponse, AnalyzeIssueResponse } from '../types';
+import type { QATestResponse, AnalyzeIssueResponse, LinkedIssue } from '../types';
 
 interface CreateJobRequest {
   url: string;
   description: string;
   outputSchema: Record<string, unknown>;
   targetDurationMinutes?: number;
+  additionalValidationInstructions?: string;
 }
 
 interface CreateJobResponse {
@@ -188,13 +189,37 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Format issue metadata into validation instructions for the LLM
+ */
+function formatIssueContext(issue: LinkedIssue): string {
+  const labels = issue.labels.map((l) => l.name).join(', ') || 'None';
+
+  // Truncate body if too long (keep first 2000 chars)
+  const MAX_BODY_LENGTH = 2000;
+  const body =
+    issue.body.length > MAX_BODY_LENGTH
+      ? issue.body.substring(0, MAX_BODY_LENGTH) + '... (truncated)'
+      : issue.body;
+
+  return `Original Issue Context:
+Title: ${issue.title}
+Labels: ${labels}
+
+Issue Description:
+${body}
+
+When validating the test results, consider whether the tester's findings align with the expectations and requirements described in the original issue above. The test should be marked as passing only if the issue appears to be properly resolved or the feature works as described.`;
+}
+
+/**
  * Call the RunHuman API to run a QA test (async with polling)
  */
 export async function runQATest(
   apiKey: string,
   apiUrl: string,
   analysis: AnalyzeIssueResponse,
-  targetDurationMinutes: number
+  targetDurationMinutes: number,
+  issue: LinkedIssue
 ): Promise<QATestResponse> {
   if (!analysis.testUrl) {
     throw new Error('No test URL provided in analysis');
@@ -208,6 +233,7 @@ export async function runQATest(
     description: analysis.testInstructions,
     outputSchema: analysis.outputSchema,
     targetDurationMinutes,
+    additionalValidationInstructions: formatIssueContext(issue),
   });
 
   // Step 2: Poll for completion

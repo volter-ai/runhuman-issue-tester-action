@@ -30168,9 +30168,28 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 /**
+ * Format issue metadata into validation instructions for the LLM
+ */
+function formatIssueContext(issue) {
+    const labels = issue.labels.map((l) => l.name).join(', ') || 'None';
+    // Truncate body if too long (keep first 2000 chars)
+    const MAX_BODY_LENGTH = 2000;
+    const body = issue.body.length > MAX_BODY_LENGTH
+        ? issue.body.substring(0, MAX_BODY_LENGTH) + '... (truncated)'
+        : issue.body;
+    return `Original Issue Context:
+Title: ${issue.title}
+Labels: ${labels}
+
+Issue Description:
+${body}
+
+When validating the test results, consider whether the tester's findings align with the expectations and requirements described in the original issue above. The test should be marked as passing only if the issue appears to be properly resolved or the feature works as described.`;
+}
+/**
  * Call the RunHuman API to run a QA test (async with polling)
  */
-async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes) {
+async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes, issue) {
     if (!analysis.testUrl) {
         throw new Error('No test URL provided in analysis');
     }
@@ -30181,6 +30200,7 @@ async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes) {
         description: analysis.testInstructions,
         outputSchema: analysis.outputSchema,
         targetDurationMinutes,
+        additionalValidationInstructions: formatIssueContext(issue),
     });
     // Step 2: Poll for completion
     core.info(`Waiting for job ${jobId} to complete (max 20 minutes)...`);
@@ -31017,7 +31037,7 @@ async function processIssue(issue, inputs, results) {
         core.info(`Instructions: ${analysis.testInstructions.substring(0, 100)}...`);
         // Run the QA test
         core.info(`Running QA test for issue #${issue.number}...`);
-        const testResult = await (0, run_test_1.runQATest)(inputs.apiKey, inputs.apiUrl, analysis, inputs.targetDurationMinutes);
+        const testResult = await (0, run_test_1.runQATest)(inputs.apiKey, inputs.apiUrl, analysis, inputs.targetDurationMinutes, issue);
         result.testResult = testResult;
         result.status = 'tested';
         result.passed = testResult.result?.success ?? false;
