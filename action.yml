@@ -1,0 +1,71 @@
+name: 'RunHuman Issue Tester'
+description: 'Test linked GitHub Issues when PRs are merged using AI-powered human QA testing'
+author: 'RunHuman'
+
+branding:
+  icon: 'check-square'
+  color: 'green'
+
+inputs:
+  issue-number:
+    description: 'Specific issue number to test (bypasses PR merge detection for manual testing)'
+    required: false
+  test-url:
+    description: 'Manual test URL (overrides AI-detected URL from issue)'
+    required: false
+  api-key:
+    description: 'RunHuman API key (starts with qa_live_). Store as secret!'
+    required: true
+  github-token:
+    description: 'GitHub token for API access (defaults to GITHUB_TOKEN)'
+    required: false
+    default: ${{ github.token }}
+  api-url:
+    description: 'RunHuman API base URL'
+    required: false
+    default: 'https://runhuman.com'
+  qa-label:
+    description: 'Label that marks issues for QA testing'
+    required: false
+    default: 'qa-test'
+  auto-detect:
+    description: 'Use AI to detect testable issues without qa-label (labeled issues are always tested)'
+    required: false
+    default: 'true'
+  target-duration-minutes:
+    description: 'Target test duration in minutes (1-60)'
+    required: false
+    default: '5'
+  reopen-on-failure:
+    description: 'Reopen issue if test fails'
+    required: false
+    default: 'true'
+  failure-label:
+    description: 'Label to add when test fails (empty to disable)'
+    required: false
+    default: 'qa-failed'
+  remove-failure-label-on-success:
+    description: 'Remove failure label when test passes'
+    required: false
+    default: 'true'
+  issue-pattern:
+    description: 'Custom regex pattern to detect issue numbers in commit messages (must have a capture group for the issue number)'
+    required: false
+
+outputs:
+  tested-issues:
+    description: 'JSON array of tested issue numbers'
+  passed-issues:
+    description: 'JSON array of issue numbers that passed'
+  failed-issues:
+    description: 'JSON array of issue numbers that failed'
+  skipped-issues:
+    description: 'JSON array of issue numbers skipped (no URL or not testable)'
+  total-cost-usd:
+    description: 'Total cost of all tests in USD'
+  results:
+    description: 'Full results object as JSON'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
