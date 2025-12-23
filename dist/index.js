@@ -30213,6 +30213,7 @@ async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes, issue)
         costUsd: finalStatus.costUsd,
         testDurationSeconds: finalStatus.testDurationSeconds,
         jobId: finalStatus.id,
+        testerData: finalStatus.testerData,
     };
     if (finalStatus.status === 'completed') {
         core.info(`Job ${jobId} completed successfully`);
