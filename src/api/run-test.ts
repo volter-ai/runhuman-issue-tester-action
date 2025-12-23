@@ -240,6 +240,13 @@ export async function runQATest(
   core.info(`Waiting for job ${jobId} to complete (max 20 minutes)...`);
   const finalStatus = await pollForCompletion(apiKey, apiUrl, jobId);
 
+  core.info(`[DEBUG] finalStatus has testerData: ${!!finalStatus.testerData}`);
+  if (finalStatus.testerData) {
+    const td = finalStatus.testerData as any;
+    core.info(`[DEBUG] testerData.videoUrl: ${td.videoUrl || 'MISSING'}`);
+    core.info(`[DEBUG] testerData.screenshots: ${td.screenshots?.length || 0}`);
+  }
+
   // Step 3: Convert to QATestResponse format
   const response: QATestResponse = {
     status: finalStatus.status,
@@ -250,6 +257,8 @@ export async function runQATest(
     jobId: finalStatus.id,
     testerData: finalStatus.testerData as PlaywrightData | undefined,
   };
+
+  core.info(`[DEBUG] response has testerData: ${!!response.testerData}`);
 
   if (finalStatus.status === 'completed') {
     core.info(`Job ${jobId} completed successfully`);
