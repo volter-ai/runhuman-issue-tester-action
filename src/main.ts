@@ -2,11 +2,12 @@ import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { parseInputs } from './input-parser';
 import { getLinkedIssues, getIssueByNumber, hasLabel, findMergedPRForCommit, getIssuesFromCommitMessage } from './github/linked-issues';
+import { getPRContext } from './github/pr-context';
 import { postTestResultComment } from './github/issue-commenter';
 import { reopenIssue, addLabel, removeLabel, ensureIssueClosed } from './github/issue-manager';
 import { analyzeIssue } from './api/analyze-issue';
 import { runQATest } from './api/run-test';
-import type { ActionResults, IssueTestResult, LinkedIssue } from './types';
+import type { ActionResults, IssueTestResult, LinkedIssue, PRContext } from './types';
 
 /**
  * Main entry point for the action
@@ -27,10 +28,11 @@ async function run(): Promise<void> {
     core.debug('Inputs parsed successfully');
 
     let issuesToProcess: LinkedIssue[];
+    let prContext: PRContext | null = null;
 
     // 2. Determine mode: manual (issue-number) or PR merge
     if (inputs.issueNumber !== null) {
-      // Manual mode: test specific issue
+      // Manual mode: test specific issue (no PR context available)
       core.info(`Manual mode: Testing issue #${inputs.issueNumber}`);
       const issue = await getIssueByNumber(inputs.githubToken, inputs.issueNumber);
 
@@ -63,6 +65,16 @@ async function run(): Promise<void> {
           core.info(`Found merged PR #${prNumber} from commit`);
         } else {
           core.debug('No merged PR found for commit, will check commit message for issue references');
+        }
+      }
+
+      // Fetch PR context (description + comments) if we have a PR
+      if (prNumber) {
+        try {
+          prContext = await getPRContext(inputs.githubToken, prNumber);
+          core.info(`Fetched PR #${prNumber} context: ${prContext.comments.length} comment(s)`);
+        } catch (error) {
+          core.warning(`Failed to fetch PR context: ${error instanceof Error ? error.message : error}`);
         }
       }
 
@@ -135,7 +147,7 @@ async function run(): Promise<void> {
 
     // 5. Process each issue sequentially
     for (const issue of issuesToProcess) {
-      await processIssue(issue, inputs, results);
+      await processIssue(issue, inputs, results, prContext);
     }
 
     // 6. Set outputs
@@ -165,7 +177,8 @@ async function run(): Promise<void> {
 async function processIssue(
   issue: LinkedIssue,
   inputs: ReturnType<typeof parseInputs>,
-  results: ActionResults
+  results: ActionResults,
+  prContext: PRContext | null
 ): Promise<void> {
   const result: IssueTestResult = {
     issueNumber: issue.number,
@@ -225,7 +238,8 @@ async function processIssue(
       inputs.apiUrl,
       analysis,
       inputs.targetDurationMinutes,
-      issue
+      issue,
+      prContext
     );
     result.testResult = testResult;
     result.status = 'tested';

@@ -1,5 +1,5 @@
 import * as core from '@actions/core';
-import type { QATestResponse, AnalyzeIssueResponse, LinkedIssue, PlaywrightData } from '../types';
+import type { QATestResponse, AnalyzeIssueResponse, LinkedIssue, PlaywrightData, PRContext, PRComment } from '../types';
 
 interface CreateJobRequest {
   url: string;
@@ -188,27 +188,89 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Character limits for context formatting
+const ISSUE_BODY_LIMIT = 2000;
+const PR_BODY_LIMIT = 1500;
+const COMMENT_BODY_LIMIT = 500;
+const MAX_COMMENTS = 10;
+
 /**
- * Format issue metadata into validation instructions for the LLM
+ * Truncate text to a maximum length
  */
-function formatIssueContext(issue: LinkedIssue): string {
+function truncateText(text: string, limit: number): string {
+  if (!text) return '';
+  if (text.length <= limit) return text;
+  return text.substring(0, limit) + '... (truncated)';
+}
+
+/**
+ * Format the issue section of the context
+ */
+function formatIssueSection(issue: LinkedIssue): string {
   const labels = issue.labels.map((l) => l.name).join(', ') || 'None';
+  const body = truncateText(issue.body, ISSUE_BODY_LIMIT);
 
-  // Truncate body if too long (keep first 2000 chars)
-  const MAX_BODY_LENGTH = 2000;
-  const body =
-    issue.body.length > MAX_BODY_LENGTH
-      ? issue.body.substring(0, MAX_BODY_LENGTH) + '... (truncated)'
-      : issue.body;
-
-  return `Original Issue Context:
+  return `=== Original Issue Context ===
 Title: ${issue.title}
 Labels: ${labels}
 
 Issue Description:
-${body}
+${body}`;
+}
 
-When validating the test results, consider whether the tester's findings align with the expectations and requirements described in the original issue above. The test should be marked as passing only if the issue appears to be properly resolved or the feature works as described.`;
+/**
+ * Format comments for the PR section
+ */
+function formatComments(comments: PRComment[]): string {
+  if (comments.length === 0) return '';
+
+  const limitedComments = comments.slice(0, MAX_COMMENTS);
+  const formatted = limitedComments
+    .map((c) => {
+      const commentType = c.isReviewComment ? 'review' : 'comment';
+      const body = truncateText(c.body, COMMENT_BODY_LIMIT);
+      return `@${c.author} (${commentType}):\n${body}`;
+    })
+    .join('\n\n');
+
+  const truncationNote =
+    comments.length > MAX_COMMENTS
+      ? `\n\n(${comments.length - MAX_COMMENTS} additional comments not shown)`
+      : '';
+
+  return `
+
+Discussion:
+${formatted}${truncationNote}`;
+}
+
+/**
+ * Format the PR section of the context
+ */
+function formatPRSection(pr: PRContext): string {
+  const body = truncateText(pr.body, PR_BODY_LIMIT);
+  const commentsText = formatComments(pr.comments);
+
+  return `
+
+=== Pull Request Context ===
+PR #${pr.number}: ${pr.title}
+Author: @${pr.author}
+
+PR Description:
+${body}${commentsText}`;
+}
+
+/**
+ * Format combined issue + PR context for validation instructions
+ */
+function formatTestingContext(issue: LinkedIssue, prContext: PRContext | null): string {
+  const issueSection = formatIssueSection(issue);
+  const prSection = prContext ? formatPRSection(prContext) : '';
+
+  return `${issueSection}${prSection}
+
+When validating the test results, consider whether the tester's findings align with the expectations and requirements described in the original issue${prContext ? ' and PR context' : ''} above. The test should be marked as passing only if the issue appears to be properly resolved or the feature works as described.`;
 }
 
 /**
@@ -219,7 +281,8 @@ export async function runQATest(
   apiUrl: string,
   analysis: AnalyzeIssueResponse,
   targetDurationMinutes: number,
-  issue: LinkedIssue
+  issue: LinkedIssue,
+  prContext: PRContext | null
 ): Promise<QATestResponse> {
   if (!analysis.testUrl) {
     throw new Error('No test URL provided in analysis');
@@ -233,7 +296,7 @@ export async function runQATest(
     description: analysis.testInstructions,
     outputSchema: analysis.outputSchema,
     targetDurationMinutes,
-    additionalValidationInstructions: formatIssueContext(issue),
+    additionalValidationInstructions: formatTestingContext(issue, prContext),
   });
 
   // Step 2: Poll for completion

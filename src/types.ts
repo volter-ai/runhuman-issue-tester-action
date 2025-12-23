@@ -102,3 +102,33 @@ export interface ActionResults {
   totalCostUsd: number;
   results: IssueTestResult[];
 }
+
+/**
+ * Comment on a pull request (general or code review comment)
+ */
+export interface PRComment {
+  /** Comment body/content */
+  body: string;
+  /** Username of the comment author */
+  author: string;
+  /** ISO timestamp when comment was created */
+  createdAt: string;
+  /** Whether this is a review comment (on code) vs general PR comment */
+  isReviewComment: boolean;
+}
+
+/**
+ * Pull request context for testing
+ */
+export interface PRContext {
+  /** PR number */
+  number: number;
+  /** PR title */
+  title: string;
+  /** PR body/description */
+  body: string;
+  /** Username of the PR author */
+  author: string;
+  /** All comments (general + review) - filtered and sorted chronologically */
+  comments: PRComment[];
+}

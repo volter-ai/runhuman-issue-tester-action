@@ -30167,29 +30167,85 @@ async function pollForCompletion(apiKey, apiUrl, jobId) {
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
+// Character limits for context formatting
+const ISSUE_BODY_LIMIT = 2000;
+const PR_BODY_LIMIT = 1500;
+const COMMENT_BODY_LIMIT = 500;
+const MAX_COMMENTS = 10;
 /**
- * Format issue metadata into validation instructions for the LLM
+ * Truncate text to a maximum length
  */
-function formatIssueContext(issue) {
+function truncateText(text, limit) {
+    if (!text)
+        return '';
+    if (text.length <= limit)
+        return text;
+    return text.substring(0, limit) + '... (truncated)';
+}
+/**
+ * Format the issue section of the context
+ */
+function formatIssueSection(issue) {
     const labels = issue.labels.map((l) => l.name).join(', ') || 'None';
-    // Truncate body if too long (keep first 2000 chars)
-    const MAX_BODY_LENGTH = 2000;
-    const body = issue.body.length > MAX_BODY_LENGTH
-        ? issue.body.substring(0, MAX_BODY_LENGTH) + '... (truncated)'
-        : issue.body;
-    return `Original Issue Context:
+    const body = truncateText(issue.body, ISSUE_BODY_LIMIT);
+    return `=== Original Issue Context ===
 Title: ${issue.title}
 Labels: ${labels}
 
 Issue Description:
-${body}
+${body}`;
+}
+/**
+ * Format comments for the PR section
+ */
+function formatComments(comments) {
+    if (comments.length === 0)
+        return '';
+    const limitedComments = comments.slice(0, MAX_COMMENTS);
+    const formatted = limitedComments
+        .map((c) => {
+        const commentType = c.isReviewComment ? 'review' : 'comment';
+        const body = truncateText(c.body, COMMENT_BODY_LIMIT);
+        return `@${c.author} (${commentType}):\n${body}`;
+    })
+        .join('\n\n');
+    const truncationNote = comments.length > MAX_COMMENTS
+        ? `\n\n(${comments.length - MAX_COMMENTS} additional comments not shown)`
+        : '';
+    return `
 
-When validating the test results, consider whether the tester's findings align with the expectations and requirements described in the original issue above. The test should be marked as passing only if the issue appears to be properly resolved or the feature works as described.`;
+Discussion:
+${formatted}${truncationNote}`;
+}
+/**
+ * Format the PR section of the context
+ */
+function formatPRSection(pr) {
+    const body = truncateText(pr.body, PR_BODY_LIMIT);
+    const commentsText = formatComments(pr.comments);
+    return `
+
+=== Pull Request Context ===
+PR #${pr.number}: ${pr.title}
+Author: @${pr.author}
+
+PR Description:
+${body}${commentsText}`;
+}
+/**
+ * Format combined issue + PR context for validation instructions
+ */
+function formatTestingContext(issue, prContext) {
+    const issueSection = formatIssueSection(issue);
+    const prSection = prContext ? formatPRSection(prContext) : '';
+    return `${issueSection}${prSection}
+
+When validating the test results, consider whether the tester's findings align with the expectations and requirements described in the original issue${prContext ? ' and PR context' : ''} above. The test should be marked as passing only if the issue appears to be properly resolved or the feature works as described.`;
 }
 /**
  * Call the RunHuman API to run a QA test (async with polling)
  */
-async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes, issue) {
+async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes, issue, prContext) {
     if (!analysis.testUrl) {
         throw new Error('No test URL provided in analysis');
     }
@@ -30200,7 +30256,7 @@ async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes, issue)
         description: analysis.testInstructions,
         outputSchema: analysis.outputSchema,
         targetDurationMinutes,
-        additionalValidationInstructions: formatIssueContext(issue),
+        additionalValidationInstructions: formatTestingContext(issue, prContext),
     });
     // Step 2: Poll for completion
     core.info(`Waiting for job ${jobId} to complete (max 20 minutes)...`);
@@ -30688,6 +30744,124 @@ async function getIssueByNumber(githubToken, issueNumber) {
 
 /***/ }),
 
+/***/ 715:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getPRContext = getPRContext;
+const github = __importStar(__nccwpck_require__(5683));
+const core = __importStar(__nccwpck_require__(7184));
+/**
+ * Check if a comment author is a bot
+ */
+function isBotAuthor(author) {
+    const lowerAuthor = author.toLowerCase();
+    return (lowerAuthor.endsWith('[bot]') ||
+        lowerAuthor === 'github-actions' ||
+        lowerAuthor.includes('dependabot'));
+}
+/**
+ * Fetch complete PR context including description and comments
+ */
+async function getPRContext(githubToken, prNumber) {
+    const octokit = github.getOctokit(githubToken);
+    const { owner, repo } = github.context.repo;
+    core.debug(`Fetching PR #${prNumber} context from ${owner}/${repo}`);
+    // Fetch PR details
+    const { data: pr } = await octokit.rest.pulls.get({
+        owner,
+        repo,
+        pull_number: prNumber,
+    });
+    // Fetch issue comments (general PR discussion)
+    const { data: issueComments } = await octokit.rest.issues.listComments({
+        owner,
+        repo,
+        issue_number: prNumber,
+        per_page: 100,
+    });
+    // Fetch review comments (code-specific comments)
+    const { data: reviewComments } = await octokit.rest.pulls.listReviewComments({
+        owner,
+        repo,
+        pull_number: prNumber,
+        per_page: 100,
+    });
+    // Convert and filter comments
+    const allComments = [];
+    for (const comment of issueComments) {
+        const author = comment.user?.login ?? 'unknown';
+        if (!isBotAuthor(author) && comment.body) {
+            allComments.push({
+                body: comment.body,
+                author,
+                createdAt: comment.created_at,
+                isReviewComment: false,
+            });
+        }
+    }
+    for (const comment of reviewComments) {
+        const author = comment.user?.login ?? 'unknown';
+        if (!isBotAuthor(author) && comment.body) {
+            allComments.push({
+                body: comment.body,
+                author,
+                createdAt: comment.created_at,
+                isReviewComment: true,
+            });
+        }
+    }
+    // Sort chronologically (oldest first)
+    allComments.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const prContext = {
+        number: pr.number,
+        title: pr.title,
+        body: pr.body ?? '',
+        author: pr.user?.login ?? 'unknown',
+        comments: allComments,
+    };
+    core.debug(`Fetched PR context: ${allComments.length} comments`);
+    return prContext;
+}
+//# sourceMappingURL=pr-context.js.map
+
+/***/ }),
+
 /***/ 8959:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -30856,6 +31030,7 @@ const core = __importStar(__nccwpck_require__(7184));
 const github = __importStar(__nccwpck_require__(5683));
 const input_parser_1 = __nccwpck_require__(8959);
 const linked_issues_1 = __nccwpck_require__(7783);
+const pr_context_1 = __nccwpck_require__(715);
 const issue_commenter_1 = __nccwpck_require__(2143);
 const issue_manager_1 = __nccwpck_require__(7638);
 const analyze_issue_1 = __nccwpck_require__(4174);
@@ -30877,9 +31052,10 @@ async function run() {
         const inputs = (0, input_parser_1.parseInputs)();
         core.debug('Inputs parsed successfully');
         let issuesToProcess;
+        let prContext = null;
         // 2. Determine mode: manual (issue-number) or PR merge
         if (inputs.issueNumber !== null) {
-            // Manual mode: test specific issue
+            // Manual mode: test specific issue (no PR context available)
             core.info(`Manual mode: Testing issue #${inputs.issueNumber}`);
             const issue = await (0, linked_issues_1.getIssueByNumber)(inputs.githubToken, inputs.issueNumber);
             if (!issue) {
@@ -30911,6 +31087,16 @@ async function run() {
                 }
                 else {
                     core.debug('No merged PR found for commit, will check commit message for issue references');
+                }
+            }
+            // Fetch PR context (description + comments) if we have a PR
+            if (prNumber) {
+                try {
+                    prContext = await (0, pr_context_1.getPRContext)(inputs.githubToken, prNumber);
+                    core.info(`Fetched PR #${prNumber} context: ${prContext.comments.length} comment(s)`);
+                }
+                catch (error) {
+                    core.warning(`Failed to fetch PR context: ${error instanceof Error ? error.message : error}`);
                 }
             }
             // Get linked issues from PR via GraphQL (if we have a PR)
@@ -30973,7 +31159,7 @@ async function run() {
         core.info(`Processing ${issuesToProcess.length} issue(s)`);
         // 5. Process each issue sequentially
         for (const issue of issuesToProcess) {
-            await processIssue(issue, inputs, results);
+            await processIssue(issue, inputs, results, prContext);
         }
         // 6. Set outputs
         setOutputs(results);
@@ -30998,7 +31184,7 @@ async function run() {
 /**
  * Process a single issue: analyze, test, comment, manage state
  */
-async function processIssue(issue, inputs, results) {
+async function processIssue(issue, inputs, results, prContext) {
     const result = {
         issueNumber: issue.number,
         status: 'skipped',
@@ -31038,7 +31224,7 @@ async function processIssue(issue, inputs, results) {
         core.info(`Instructions: ${analysis.testInstructions.substring(0, 100)}...`);
         // Run the QA test
         core.info(`Running QA test for issue #${issue.number}...`);
-        const testResult = await (0, run_test_1.runQATest)(inputs.apiKey, inputs.apiUrl, analysis, inputs.targetDurationMinutes, issue);
+        const testResult = await (0, run_test_1.runQATest)(inputs.apiKey, inputs.apiUrl, analysis, inputs.targetDurationMinutes, issue, prContext);
         result.testResult = testResult;
         result.status = 'tested';
         result.passed = testResult.result?.success ?? false;
