@@ -11,7 +11,7 @@ interface AnalyzeIssueRequest {
 }
 
 /**
- * Call the RunHuman API to analyze a GitHub issue
+ * Call the Runhuman API to analyze a GitHub issue
  * @param presetTestUrl Optional preset URL to use as base - AI will use/enhance this
  * @param githubRepo Optional GitHub repo (owner/repo format) for context
  */

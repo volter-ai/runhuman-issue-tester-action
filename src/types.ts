@@ -47,7 +47,7 @@ export interface AnalyzeIssueResponse {
 }
 
 /**
- * Playwright test data from RunHuman
+ * Playwright test data from Runhuman
  */
 export interface PlaywrightData {
   testDurationSeconds: number;
@@ -59,7 +59,7 @@ export interface PlaywrightData {
 }
 
 /**
- * Extracted result from RunHuman test
+ * Extracted result from Runhuman test
  */
 export interface ExtractedResult {
   success: boolean;
@@ -68,7 +68,7 @@ export interface ExtractedResult {
 }
 
 /**
- * Response from RunHuman QA test
+ * Response from Runhuman QA test
  */
 export interface QATestResponse {
   status: string;

@@ -163,7 +163,7 @@ async function pollForCompletion(
     if (elapsed > MAX_POLL_DURATION_MS) {
       throw new Error(
         `Job ${jobId} did not complete within 20 minutes. ` +
-          `Last status: ${lastStatus}. The job may still be running - check the RunHuman dashboard.`
+          `Last status: ${lastStatus}. The job may still be running - check the Runhuman dashboard.`
       );
     }
 
@@ -275,7 +275,7 @@ When validating the test results, consider whether the tester's findings align w
 }
 
 /**
- * Call the RunHuman API to run a QA test (async with polling)
+ * Call the Runhuman API to run a QA test (async with polling)
  */
 export async function runQATest(
   apiKey: string,

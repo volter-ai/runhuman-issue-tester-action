@@ -356,7 +356,7 @@ async function createSummary(results: ActionResults): Promise<void> {
   }
 
   summary.addRaw('\n---\n');
-  summary.addRaw('Powered by [RunHuman](https://runhuman.com)');
+  summary.addRaw('Powered by [Runhuman](https://runhuman.com)');
 
   await summary.write();
 }

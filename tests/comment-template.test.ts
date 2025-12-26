@@ -34,7 +34,7 @@ describe('buildTestResultComment', () => {
     expect(comment).toContain('95%');
     expect(comment).toContain('The login button works correctly now.');
     expect(comment).toContain('Test passed. Issue confirmed as resolved.');
-    expect(comment).toContain('RunHuman');
+    expect(comment).toContain('Runhuman');
   });
 
   it('should build a failing test comment', () => {

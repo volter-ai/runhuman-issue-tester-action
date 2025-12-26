@@ -89,7 +89,7 @@ export function buildTestResultComment(
   comment += `
 ---
 
-<sub>Powered by [RunHuman](https://runhuman.com) - Human-powered QA testing</sub>
+<sub>Powered by [Runhuman](https://runhuman.com) - Human-powered QA testing</sub>
 `;
 
   return comment;

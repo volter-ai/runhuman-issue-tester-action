@@ -1,4 +1,4 @@
-# RunHuman Issue Tester Action
+# Runhuman Issue Tester Action
 
 Automatically test linked GitHub Issues when PRs are merged using AI-powered human QA testing.
 
@@ -38,7 +38,7 @@ jobs:
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `api-key` | Yes | - | RunHuman API key (starts with `qa_live_`) |
+| `api-key` | Yes | - | Runhuman API key (starts with `qa_live_`) |
 | `github-token` | No | `${{ github.token }}` | GitHub token for API access |
 | `issue-number` | No | - | Test a specific issue (bypasses PR detection) |
 | `test-url` | No | - | Base test URL (AI will append paths from issues) |
@@ -49,7 +49,7 @@ jobs:
 | `reopen-on-failure` | No | `true` | Reopen issue if test fails |
 | `failure-label` | No | `qa-failed` | Label to add when test fails |
 | `remove-failure-label-on-success` | No | `true` | Remove failure label on pass |
-| `api-url` | No | `https://runhuman.com` | RunHuman API base URL |
+| `api-url` | No | `https://runhuman.com` | Runhuman API base URL |
 
 ## Outputs
 
@@ -344,6 +344,6 @@ Ensure `RUNHUMAN_API_KEY` secret:
 
 ## Links
 
-- [RunHuman Documentation](https://runhuman.com/docs)
+- [Runhuman Documentation](https://runhuman.com/docs)
 - [API Reference](https://runhuman.com/docs/api-reference)
 - [QA Test Action](../qa-test-action) - For testing URLs directly

@@ -1,6 +1,6 @@
-name: 'RunHuman Issue Tester'
+name: 'Runhuman Issue Tester'
 description: 'Test linked GitHub Issues when PRs are merged using AI-powered human QA testing'
-author: 'RunHuman'
+author: 'Runhuman'
 
 branding:
   icon: 'check-square'
@@ -14,14 +14,14 @@ inputs:
     description: 'Manual test URL (overrides AI-detected URL from issue)'
     required: false
   api-key:
-    description: 'RunHuman API key (starts with qa_live_). Store as secret!'
+    description: 'Runhuman API key (starts with qa_live_). Store as secret!'
     required: true
   github-token:
     description: 'GitHub token for API access (defaults to GITHUB_TOKEN)'
     required: false
     default: ${{ github.token }}
   api-url:
-    description: 'RunHuman API base URL'
+    description: 'Runhuman API base URL'
     required: false
     default: 'https://runhuman.com'
   qa-label:
