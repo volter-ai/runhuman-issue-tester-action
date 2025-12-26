@@ -11,6 +11,16 @@ vi.mock('@actions/core', () => ({
   setOutput: vi.fn(),
 }));
 
+// Mock @actions/github
+vi.mock('@actions/github', () => ({
+  context: {
+    repo: {
+      owner: 'test-owner',
+      repo: 'test-repo',
+    },
+  },
+}));
+
 import * as core from '@actions/core';
 import { parseInputs } from '../src/input-parser';
 
@@ -46,6 +56,7 @@ describe('parseInputs', () => {
     expect(result.reopenOnFailure).toBe(true);
     expect(result.failureLabel).toBe('qa-failed');
     expect(result.removeFailureLabelOnSuccess).toBe(true);
+    expect(result.githubRepo).toBe('test-owner/test-repo');
   });
 
   it('should throw error for invalid API key format', () => {
