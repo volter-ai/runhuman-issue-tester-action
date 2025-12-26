@@ -7,6 +7,7 @@ interface CreateJobRequest {
   outputSchema: Record<string, unknown>;
   targetDurationMinutes?: number;
   additionalValidationInstructions?: string;
+  githubRepo?: string;
 }
 
 interface CreateJobResponse {
@@ -282,7 +283,8 @@ export async function runQATest(
   analysis: AnalyzeIssueResponse,
   targetDurationMinutes: number,
   issue: LinkedIssue,
-  prContext: PRContext | null
+  prContext: PRContext | null,
+  githubRepo?: string
 ): Promise<QATestResponse> {
   if (!analysis.testUrl) {
     throw new Error('No test URL provided in analysis');
@@ -297,6 +299,7 @@ export async function runQATest(
     outputSchema: analysis.outputSchema,
     targetDurationMinutes,
     additionalValidationInstructions: formatTestingContext(issue, prContext),
+    githubRepo,
   });
 
   // Step 2: Poll for completion

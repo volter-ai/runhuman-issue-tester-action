@@ -189,13 +189,14 @@ async function processIssue(
   try {
     core.info(`\n--- Processing issue #${issue.number}: ${issue.title} ---`);
 
-    // Analyze the issue with AI (pass preset URL if provided)
+    // Analyze the issue with AI (pass preset URL and repo context if provided)
     core.info(`Analyzing issue #${issue.number}...`);
     const analysis = await analyzeIssue(
       inputs.apiKey,
       inputs.apiUrl,
       issue,
-      inputs.testUrl || undefined
+      inputs.testUrl || undefined,
+      inputs.githubRepo
     );
     result.analysis = analysis;
 
@@ -239,7 +240,8 @@ async function processIssue(
       analysis,
       inputs.targetDurationMinutes,
       issue,
-      prContext
+      prContext,
+      inputs.githubRepo
     );
     result.testResult = testResult;
     result.status = 'tested';

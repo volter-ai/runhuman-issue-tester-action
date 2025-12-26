@@ -1,4 +1,5 @@
 import * as core from '@actions/core';
+import * as github from '@actions/github';
 import type { ParsedInputs } from './types';
 
 /**
@@ -61,6 +62,10 @@ export function parseInputs(): ParsedInputs {
     }
   }
 
+  // Get current GitHub repo from context
+  const { owner, repo } = github.context.repo;
+  const githubRepo = `${owner}/${repo}`;
+
   return {
     apiKey,
     githubToken,
@@ -74,6 +79,7 @@ export function parseInputs(): ParsedInputs {
     issueNumber,
     testUrl,
     issuePattern,
+    githubRepo,
   };
 }
 

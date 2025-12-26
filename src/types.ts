@@ -17,6 +17,8 @@ export interface ParsedInputs {
   testUrl: string | null;
   /** Custom regex pattern for detecting issue numbers in commit messages */
   issuePattern: string | null;
+  /** GitHub repository (owner/repo format) for context - provides README.md and CLAUDE.md to the LLM */
+  githubRepo: string;
 }
 
 /**

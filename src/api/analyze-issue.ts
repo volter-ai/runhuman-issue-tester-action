@@ -6,18 +6,21 @@ interface AnalyzeIssueRequest {
   issueBody: string;
   issueLabels: string[];
   repoContext?: string;
+  githubRepo?: string;
   presetTestUrl?: string;
 }
 
 /**
  * Call the RunHuman API to analyze a GitHub issue
  * @param presetTestUrl Optional preset URL to use as base - AI will use/enhance this
+ * @param githubRepo Optional GitHub repo (owner/repo format) for context
  */
 export async function analyzeIssue(
   apiKey: string,
   apiUrl: string,
   issue: LinkedIssue,
-  presetTestUrl?: string
+  presetTestUrl?: string,
+  githubRepo?: string
 ): Promise<AnalyzeIssueResponse> {
   const endpoint = `${apiUrl}/api/analyze-issue`;
 
@@ -25,12 +28,16 @@ export async function analyzeIssue(
   if (presetTestUrl) {
     core.debug(`Using preset test URL: ${presetTestUrl}`);
   }
+  if (githubRepo) {
+    core.debug(`Using GitHub repo context: ${githubRepo}`);
+  }
 
   const requestBody: AnalyzeIssueRequest = {
     issueTitle: issue.title,
     issueBody: issue.body,
     issueLabels: issue.labels.map((l) => l.name),
     presetTestUrl,
+    githubRepo,
   };
 
   const response = await fetch(endpoint, {
