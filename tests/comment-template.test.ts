@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTestResultComment } from '../src/templates/comment-template';
+import { buildTestResultComment } from '@runhuman/shared';
 import type { QATestResponse, AnalyzeIssueResponse } from '../src/types';
 
 describe('buildTestResultComment', () => {

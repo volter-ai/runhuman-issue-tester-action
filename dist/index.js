@@ -30338,14 +30338,14 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.postTestResultComment = postTestResultComment;
 const github = __importStar(__nccwpck_require__(5683));
 const core = __importStar(__nccwpck_require__(7184));
-const comment_template_1 = __nccwpck_require__(2405);
+const shared_1 = __nccwpck_require__(779);
 /**
  * Post a test result comment to a GitHub issue
  */
 async function postTestResultComment(githubToken, issueNumber, testResult, analysis) {
     const octokit = github.getOctokit(githubToken);
     const { owner, repo } = github.context.repo;
-    const comment = (0, comment_template_1.buildTestResultComment)(testResult, analysis);
+    const comment = (0, shared_1.buildTestResultComment)(testResult, analysis);
     core.debug(`Posting comment to issue #${issueNumber}`);
     await octokit.rest.issues.createComment({
         owner,
@@ -31341,116 +31341,6 @@ async function createSummary(results) {
 // Run the action
 run();
 //# sourceMappingURL=main.js.map
-
-/***/ }),
-
-/***/ 2405:
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.buildTestResultComment = buildTestResultComment;
-/**
- * Build a markdown comment for posting test results to a GitHub issue
- */
-function buildTestResultComment(testResult, analysis) {
-    const passed = testResult.result?.success ?? false;
-    const statusEmoji = passed ? '\u2705' : '\u274C';
-    const statusText = passed ? 'PASSED' : 'FAILED';
-    let comment = `## ${statusEmoji} QA Test ${statusText}
-
-**Tested URL:** ${analysis.testUrl || 'N/A'}
-**Duration:** ${testResult.testDurationSeconds ? `${testResult.testDurationSeconds}s` : 'N/A'}
-**Cost:** ${testResult.costUsd ? `$${testResult.costUsd.toFixed(4)}` : 'N/A'}
-**Confidence:** ${(analysis.confidence * 100).toFixed(0)}%
-
----
-
-### Test Instructions
-
-> ${analysis.testInstructions}
-
----
-
-### Tester Findings
-
-> ${testResult.result?.explanation || 'No explanation provided'}
-
-`;
-    // Add extracted data if available
-    if (testResult.result?.data && Object.keys(testResult.result.data).length > 0) {
-        comment += `
-### Test Results
-
-| Field | Value |
-|-------|-------|
-`;
-        for (const [key, value] of Object.entries(testResult.result.data)) {
-            const displayValue = formatValue(value);
-            comment += `| ${key} | ${displayValue} |\n`;
-        }
-        comment += '\n';
-    }
-    // Add screenshots if available
-    if (testResult.testerData?.screenshots && testResult.testerData.screenshots.length > 0) {
-        comment += `
-### Screenshots
-
-`;
-        for (let i = 0; i < testResult.testerData.screenshots.length; i++) {
-            comment += `![Screenshot ${i + 1}](${testResult.testerData.screenshots[i]})\n\n`;
-        }
-    }
-    // Add video link if available
-    if (testResult.testerData?.videoUrl) {
-        comment += `
-### Session Recording
-
-[View Video Recording](${testResult.testerData.videoUrl})
-
-`;
-    }
-    // Add action taken message
-    if (!passed) {
-        comment += `
----
-
-**Action Taken:** This issue has been reopened because the QA test failed.
-
-`;
-    }
-    else {
-        comment += `
----
-
-**Action Taken:** Test passed. Issue confirmed as resolved.
-
-`;
-    }
-    // Footer
-    comment += `
----
-
-<sub>Powered by [Runhuman](https://runhuman.com) - Human-powered QA testing</sub>
-`;
-    return comment;
-}
-/**
- * Format a value for display in the results table
- */
-function formatValue(value) {
-    if (value === true)
-        return '\u2705 Yes';
-    if (value === false)
-        return '\u274C No';
-    if (value === null || value === undefined)
-        return 'N/A';
-    if (typeof value === 'object')
-        return `\`${JSON.stringify(value)}\``;
-    return String(value);
-}
-//# sourceMappingURL=comment-template.js.map
 
 /***/ }),
 
@@ -33325,6 +33215,429 @@ function parseParams (str) {
 module.exports = parseParams
 
 
+/***/ }),
+
+/***/ 779:
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
+
+"use strict";
+// ESM COMPAT FLAG
+__nccwpck_require__.r(__webpack_exports__);
+
+// EXPORTS
+__nccwpck_require__.d(__webpack_exports__, {
+  DEFAULT_ISSUE_TEST_CONFIG: () => (/* reexport */ DEFAULT_ISSUE_TEST_CONFIG),
+  JOB_STATUS: () => (/* reexport */ JOB_STATUS),
+  PAGINATION_DEFAULTS: () => (/* reexport */ PAGINATION_DEFAULTS),
+  apiRoutes: () => (/* reexport */ apiRoutes),
+  buildTestResultComment: () => (/* reexport */ buildTestResultComment),
+  defineRoute: () => (/* reexport */ defineRoute),
+  formatResultValue: () => (/* reexport */ formatResultValue),
+  isActiveStatus: () => (/* reexport */ isActiveStatus),
+  isTerminalStatus: () => (/* reexport */ isTerminalStatus),
+  parsePaginationParams: () => (/* reexport */ parsePaginationParams),
+  webRoutes: () => (/* reexport */ webRoutes)
+});
+
+;// CONCATENATED MODULE: ../shared/dist/job/job-status.js
+const JOB_STATUS = {
+    PENDING: 'pending',
+    WAITING: 'waiting',
+    WORKING: 'working',
+    COMPLETED: 'completed',
+    INCOMPLETE: 'incomplete',
+    ABANDONED: 'abandoned',
+    ERROR: 'error',
+};
+function isTerminalStatus(status) {
+    return ['completed', 'incomplete', 'abandoned', 'error'].includes(status);
+}
+function isActiveStatus(status) {
+    return ['pending', 'waiting', 'working'].includes(status);
+}
+//# sourceMappingURL=job-status.js.map
+;// CONCATENATED MODULE: ../shared/dist/job/index.js
+
+//# sourceMappingURL=index.js.map
+;// CONCATENATED MODULE: ../shared/dist/pagination/pagination.types.js
+const PAGINATION_DEFAULTS = {
+    limit: 50,
+    maxLimit: 100,
+    offset: 0,
+};
+function parsePaginationParams(query) {
+    const limit = Math.min(Math.max(1, parseInt(query.limit || String(PAGINATION_DEFAULTS.limit), 10) || PAGINATION_DEFAULTS.limit), PAGINATION_DEFAULTS.maxLimit);
+    const offset = Math.max(0, parseInt(query.offset || '0', 10) || 0);
+    return { limit, offset };
+}
+//# sourceMappingURL=pagination.types.js.map
+;// CONCATENATED MODULE: ../shared/dist/pagination/index.js
+
+//# sourceMappingURL=index.js.map
+;// CONCATENATED MODULE: ../shared/dist/github-issues/github-issues.types.js
+/**
+ * GitHub Issues shared types
+ */
+/**
+ * Default configuration for issue testing
+ */
+const DEFAULT_ISSUE_TEST_CONFIG = {
+    targetDurationMinutes: 5,
+    failureLabel: 'qa-failed',
+    reopenOnFailure: true,
+    removeFailureLabelOnSuccess: true,
+};
+//# sourceMappingURL=github-issues.types.js.map
+;// CONCATENATED MODULE: ../shared/dist/github-issues/index.js
+
+//# sourceMappingURL=index.js.map
+;// CONCATENATED MODULE: ../shared/dist/routes/route-builder.js
+/**
+ * Type-safe route builder system
+ *
+ * Provides compile-time type checking for route parameters.
+ * Usage:
+ *   const route = defineRoute('/dashboard/:projectId/jobs/:jobId?');
+ *   route.build({ projectId: 'abc' });           // '/dashboard/abc/jobs'
+ *   route.build({ projectId: 'abc', jobId: '1' }); // '/dashboard/abc/jobs/1'
+ */
+/**
+ * Creates a type-safe route builder.
+ *
+ * @param pattern Route pattern with :param placeholders (e.g., '/dashboard/:projectId/jobs')
+ * @returns Route object with pattern and build function
+ *
+ * @example
+ * const route = defineRoute('/dashboard/:projectId/jobs/:jobId?');
+ * route.pattern; // '/dashboard/:projectId/jobs/:jobId?'
+ * route.build({ projectId: 'abc' }); // '/dashboard/abc/jobs'
+ * route.build({ projectId: 'abc', jobId: '123' }); // '/dashboard/abc/jobs/123'
+ */
+function defineRoute(pattern) {
+    const build = (params) => {
+        if (!params)
+            return pattern;
+        let result = pattern;
+        // Replace all :param and :param? placeholders
+        for (const [key, value] of Object.entries(params)) {
+            if (value !== undefined) {
+                // Replace both :param and :param? variants
+                result = result.replace(`:${key}?`, value);
+                result = result.replace(`:${key}`, value);
+            }
+        }
+        // Remove any remaining optional params that weren't provided
+        result = result.replace(/\/:[^/]+\?/g, '');
+        // Clean up any double slashes that might result from removal
+        result = result.replace(/\/+/g, '/');
+        // Remove trailing slash unless it's the root
+        if (result.length > 1 && result.endsWith('/')) {
+            result = result.slice(0, -1);
+        }
+        return result;
+    };
+    return {
+        pattern,
+        build: build,
+    };
+}
+//# sourceMappingURL=route-builder.js.map
+;// CONCATENATED MODULE: ../shared/dist/routes/web-routes.js
+/**
+ * Frontend route definitions for the web dashboard
+ */
+
+/**
+ * All frontend routes for the web application.
+ *
+ * Usage:
+ *   import { webRoutes } from '@runhuman/shared';
+ *   navigate(webRoutes.playground.build({ projectId: 'abc' }));
+ *   // => '/dashboard/abc/playground'
+ */
+const webRoutes = {
+    // ============================================
+    // Non-project routes (no projectId required)
+    // ============================================
+    /** Dashboard home page */
+    dashboard: defineRoute('/dashboard'),
+    /** Projects list page */
+    projects: defineRoute('/dashboard/projects'),
+    /** Usage/analytics page */
+    usage: defineRoute('/dashboard/usage'),
+    /** Subscription management page */
+    managePlan: defineRoute('/dashboard/manage-plan'),
+    // ============================================
+    // User settings routes
+    // ============================================
+    /** Settings root (redirects to account) */
+    settings: defineRoute('/dashboard/settings'),
+    /** Account settings page */
+    settingsAccount: defineRoute('/dashboard/settings/account'),
+    /** GitHub integration settings */
+    settingsGitHub: defineRoute('/dashboard/settings/github'),
+    // ============================================
+    // Project routes (require projectId)
+    // ============================================
+    /** Project root (redirects to playground) */
+    project: defineRoute('/dashboard/:projectId'),
+    /** Playground page for testing */
+    playground: defineRoute('/dashboard/:projectId/playground'),
+    /** Jobs list page */
+    jobs: defineRoute('/dashboard/:projectId/jobs'),
+    /** Single job detail page */
+    job: defineRoute('/dashboard/:projectId/jobs/:jobId'),
+    /** GitHub issues page */
+    issues: defineRoute('/dashboard/:projectId/issues'),
+    /** Project settings page */
+    projectSettings: defineRoute('/dashboard/:projectId/settings'),
+    // ============================================
+    // External/public routes
+    // ============================================
+    /** Documentation quick start */
+    docs: defineRoute('/docs/quick-start'),
+    /** Pricing page */
+    pricing: defineRoute('/pricing'),
+    /** Home page */
+    home: defineRoute('/'),
+};
+//# sourceMappingURL=web-routes.js.map
+;// CONCATENATED MODULE: ../shared/dist/routes/api-routes.js
+/**
+ * API endpoint definitions
+ *
+ * These routes are used by the web frontend to call the API.
+ * Note: These are relative paths (no /api prefix for the client,
+ * which adds /api automatically via API_BASE).
+ */
+
+/**
+ * All API endpoints.
+ *
+ * Usage:
+ *   import { apiRoutes } from '@runhuman/shared';
+ *   apiClient(apiRoutes.jobs.build());
+ *   // => '/jobs'
+ */
+const apiRoutes = {
+    // ============================================
+    // Jobs endpoints
+    // ============================================
+    /** List jobs (GET) or create job (POST) */
+    jobs: defineRoute('/jobs'),
+    /** Get/delete specific job */
+    job: defineRoute('/jobs/:jobId'),
+    /** Get job status (clean response for polling) */
+    jobStatus: defineRoute('/job/:jobId'),
+    /** Synchronous job execution */
+    run: defineRoute('/run'),
+    // ============================================
+    // API Keys endpoints
+    // ============================================
+    /** List API keys (GET) or create key (POST) */
+    keys: defineRoute('/keys'),
+    /** Get/update/delete specific key */
+    key: defineRoute('/keys/:keyId'),
+    /** Revoke an API key */
+    keyRevoke: defineRoute('/keys/:keyId/revoke'),
+    // ============================================
+    // Projects endpoints
+    // ============================================
+    /** List projects (GET) or create project (POST) */
+    projects: defineRoute('/projects'),
+    /** Get/update/delete specific project */
+    project: defineRoute('/projects/:projectId'),
+    /** Get jobs for a project */
+    projectJobs: defineRoute('/projects/:projectId/jobs'),
+    /** Get API keys for a project */
+    projectApiKeys: defineRoute('/projects/:projectId/api-keys'),
+    // ============================================
+    // GitHub endpoints
+    // ============================================
+    /** GitHub OAuth authorize */
+    githubOAuthAuthorize: defineRoute('/github/oauth/authorize'),
+    /** GitHub OAuth callback */
+    githubCallback: defineRoute('/github/auth/callback'),
+    /** Get GitHub app installations */
+    githubInstallations: defineRoute('/github/installations'),
+    /** Get/delete specific installation */
+    githubInstallation: defineRoute('/github/installations/:installationId'),
+    /** Refresh installation repos */
+    githubInstallationRefresh: defineRoute('/github/installations/:installationId/refresh'),
+    /** List accessible repos across all installations */
+    githubRepos: defineRoute('/github/repos'),
+    /** List issues for a repo (by owner/repo) */
+    githubIssuesByRepo: defineRoute('/github/issues/:owner/:repo'),
+    /** List issues (by projectId query param) */
+    githubIssues: defineRoute('/github/issues'),
+    /** Get a single issue */
+    githubIssue: defineRoute('/github/issues/:issueNumber'),
+    /** Get comments for an issue */
+    githubIssueComments: defineRoute('/github/issues/:issueNumber/comments'),
+    /** Get labels for a repo */
+    githubIssueLabels: defineRoute('/github/issues/labels'),
+    /** Get assignees for a repo */
+    githubIssueAssignees: defineRoute('/github/issues/assignees'),
+    /** Test a single issue */
+    githubIssueTest: defineRoute('/github/issues/test'),
+    /** Bulk test multiple issues */
+    githubIssuesBulkTest: defineRoute('/github/issues/bulk-test'),
+    /** List test sessions */
+    githubTestSessions: defineRoute('/github/issues/test-sessions'),
+    /** Get/delete a test session */
+    githubTestSession: defineRoute('/github/issues/test-sessions/:sessionId'),
+    /** Bulk test GitHub issues (legacy route) */
+    githubBulkTest: defineRoute('/github/bulk-test'),
+    // ============================================
+    // Other endpoints
+    // ============================================
+    /** Health check */
+    health: defineRoute('/health'),
+    /** List templates */
+    templates: defineRoute('/templates'),
+    /** Issue analyzer */
+    issueAnalyzer: defineRoute('/issue-analyzer'),
+    /** Logs endpoint */
+    logs: defineRoute('/logs'),
+};
+//# sourceMappingURL=api-routes.js.map
+;// CONCATENATED MODULE: ../shared/dist/routes/index.js
+/**
+ * Type-safe route management system
+ *
+ * @example
+ * import { webRoutes, apiRoutes, defineRoute } from '@runhuman/shared/routes';
+ *
+ * // Navigate to a project page
+ * navigate(webRoutes.playground.build({ projectId: 'abc' }));
+ *
+ * // Make an API call
+ * apiClient(apiRoutes.job.build({ jobId: '123' }));
+ *
+ * // Create a custom route
+ * const customRoute = defineRoute('/custom/:id');
+ * customRoute.build({ id: 'xyz' });
+ */
+// Core route builder
+
+// Web (frontend) routes
+
+// API routes
+
+//# sourceMappingURL=index.js.map
+;// CONCATENATED MODULE: ../shared/dist/issue-testing/comment-template.js
+/**
+ * Format a value for display in the results table
+ */
+function formatResultValue(value) {
+    if (value === true)
+        return 'Yes';
+    if (value === false)
+        return 'No';
+    if (value === null || value === undefined)
+        return 'N/A';
+    if (typeof value === 'object')
+        return `\`${JSON.stringify(value)}\``;
+    return String(value);
+}
+/**
+ * Build a markdown comment for posting test results to a GitHub issue
+ */
+function buildTestResultComment(testResult, analysis) {
+    const passed = testResult.result?.success ?? false;
+    const statusText = passed ? 'PASSED' : 'FAILED';
+    let comment = `## QA Test ${statusText}
+
+**Tested URL:** ${analysis.testUrl || 'N/A'}
+**Duration:** ${testResult.testDurationSeconds ? `${testResult.testDurationSeconds}s` : 'N/A'}
+**Cost:** ${testResult.costUsd ? `$${testResult.costUsd.toFixed(4)}` : 'N/A'}
+**Confidence:** ${(analysis.confidence * 100).toFixed(0)}%
+
+---
+
+### Test Instructions
+
+> ${analysis.testInstructions}
+
+---
+
+### Tester Findings
+
+> ${testResult.result?.explanation || 'No explanation provided'}
+
+`;
+    // Add extracted data if available
+    if (testResult.result?.data && Object.keys(testResult.result.data).length > 0) {
+        comment += `
+### Test Results
+
+| Field | Value |
+|-------|-------|
+`;
+        for (const [key, value] of Object.entries(testResult.result.data)) {
+            const displayValue = formatResultValue(value);
+            comment += `| ${key} | ${displayValue} |\n`;
+        }
+        comment += '\n';
+    }
+    // Add screenshots if available
+    if (testResult.testerData?.screenshots && testResult.testerData.screenshots.length > 0) {
+        comment += `
+### Screenshots
+
+`;
+        for (let i = 0; i < testResult.testerData.screenshots.length; i++) {
+            comment += `![Screenshot ${i + 1}](${testResult.testerData.screenshots[i]})\n\n`;
+        }
+    }
+    // Add video link if available
+    if (testResult.testerData?.videoUrl) {
+        comment += `
+### Session Recording
+
+[View Video Recording](${testResult.testerData.videoUrl})
+
+`;
+    }
+    // Add action taken message
+    if (!passed) {
+        comment += `
+---
+
+**Action Taken:** This issue has been reopened because the QA test failed.
+
+`;
+    }
+    else {
+        comment += `
+---
+
+**Action Taken:** Test passed. Issue confirmed as resolved.
+
+`;
+    }
+    // Footer
+    comment += `
+---
+
+<sub>Powered by [Runhuman](https://runhuman.com) - Human-powered QA testing</sub>
+`;
+    return comment;
+}
+//# sourceMappingURL=comment-template.js.map
+;// CONCATENATED MODULE: ../shared/dist/index.js
+// Job types
+
+// Pagination types
+
+// GitHub Issues types
+
+// Route types and builders
+
+// Issue testing types
+
+//# sourceMappingURL=index.js.map
+
 /***/ })
 
 /******/ 	});
@@ -33360,6 +33673,34 @@ module.exports = parseParams
 /******/ 	}
 /******/ 	
 /************************************************************************/
+/******/ 	/* webpack/runtime/define property getters */
+/******/ 	(() => {
+/******/ 		// define getter functions for harmony exports
+/******/ 		__nccwpck_require__.d = (exports, definition) => {
+/******/ 			for(var key in definition) {
+/******/ 				if(__nccwpck_require__.o(definition, key) && !__nccwpck_require__.o(exports, key)) {
+/******/ 					Object.defineProperty(exports, key, { enumerable: true, get: definition[key] });
+/******/ 				}
+/******/ 			}
+/******/ 		};
+/******/ 	})();
+/******/ 	
+/******/ 	/* webpack/runtime/hasOwnProperty shorthand */
+/******/ 	(() => {
+/******/ 		__nccwpck_require__.o = (obj, prop) => (Object.prototype.hasOwnProperty.call(obj, prop))
+/******/ 	})();
+/******/ 	
+/******/ 	/* webpack/runtime/make namespace object */
+/******/ 	(() => {
+/******/ 		// define __esModule on exports
+/******/ 		__nccwpck_require__.r = (exports) => {
+/******/ 			if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+/******/ 				Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
+/******/ 			}
+/******/ 			Object.defineProperty(exports, '__esModule', { value: true });
+/******/ 		};
+/******/ 	})();
+/******/ 	
 /******/ 	/* webpack/runtime/compat */
 /******/ 	
 /******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";

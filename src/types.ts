@@ -1,3 +1,15 @@
+// Re-export shared types
+export type {
+  AnalyzeIssueResponse,
+  AnalyzeIssueRequest,
+  PlaywrightData,
+  QATestResult,
+} from '@runhuman/shared';
+
+// Alias for backward compatibility
+import type { QATestResult } from '@runhuman/shared';
+export type QATestResponse = QATestResult;
+
 /**
  * Parsed inputs from action.yml
  */
@@ -35,60 +47,14 @@ export interface LinkedIssue {
 }
 
 /**
- * Response from the analyze-issue API endpoint
- */
-export interface AnalyzeIssueResponse {
-  isTestable: boolean;
-  reason?: string;
-  testUrl: string | null;
-  testInstructions: string;
-  outputSchema: Record<string, { type: string; description: string }>;
-  confidence: number;
-}
-
-/**
- * Playwright test data from Runhuman
- */
-export interface PlaywrightData {
-  testDurationSeconds: number;
-  consoleMessages: Array<{ type: string; message: string; timestamp: string }>;
-  networkRequests: Array<{ url: string; method: string; status?: number; timestamp: string }>;
-  clicks: Array<{ x: number; y: number; timestamp: string; element?: string }>;
-  screenshots: string[];
-  videoUrl?: string;
-}
-
-/**
- * Extracted result from Runhuman test
- */
-export interface ExtractedResult {
-  success: boolean;
-  explanation: string;
-  data: Record<string, unknown>;
-}
-
-/**
- * Response from Runhuman QA test
- */
-export interface QATestResponse {
-  status: string;
-  result?: ExtractedResult;
-  error?: string;
-  costUsd?: number;
-  testDurationSeconds?: number;
-  testerData?: PlaywrightData;
-  jobId?: string;
-}
-
-/**
  * Result of testing a single issue
  */
 export interface IssueTestResult {
   issueNumber: number;
   status: 'tested' | 'skipped' | 'error';
   passed: boolean;
-  testResult?: QATestResponse;
-  analysis?: AnalyzeIssueResponse;
+  testResult?: QATestResult;
+  analysis?: import('@runhuman/shared').AnalyzeIssueResponse;
   error?: string;
   skipReason?: string;
 }

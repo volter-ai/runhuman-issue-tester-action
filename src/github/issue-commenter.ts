@@ -1,7 +1,7 @@
 import * as github from '@actions/github';
 import * as core from '@actions/core';
+import { buildTestResultComment } from '@runhuman/shared';
 import type { QATestResponse, AnalyzeIssueResponse } from '../types';
-import { buildTestResultComment } from '../templates/comment-template';
 
 /**
  * Post a test result comment to a GitHub issue

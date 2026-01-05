@@ -1,14 +1,5 @@
 import * as core from '@actions/core';
-import type { AnalyzeIssueResponse, LinkedIssue } from '../types';
-
-interface AnalyzeIssueRequest {
-  issueTitle: string;
-  issueBody: string;
-  issueLabels: string[];
-  repoContext?: string;
-  githubRepo?: string;
-  presetTestUrl?: string;
-}
+import type { AnalyzeIssueRequest, AnalyzeIssueResponse, LinkedIssue } from '../types';
 
 /**
  * Call the Runhuman API to analyze a GitHub issue
