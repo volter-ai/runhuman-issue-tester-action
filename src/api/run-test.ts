@@ -1,5 +1,5 @@
 import * as core from '@actions/core';
-import type { QATestResponse, AnalyzeIssueResponse, LinkedIssue, PlaywrightData, PRContext, PRComment } from '../types';
+import type { QATestResponse, AnalyzeIssueResponse, AnalyzeMergeResponse, LinkedIssue, PlaywrightData, PRContext, PRComment } from '../types';
 
 interface CreateJobRequest {
   url: string;
@@ -299,6 +299,80 @@ export async function runQATest(
     outputSchema: analysis.outputSchema,
     targetDurationMinutes,
     additionalValidationInstructions: formatTestingContext(issue, prContext),
+    githubRepo,
+  });
+
+  // Step 2: Poll for completion
+  core.info(`Waiting for job ${jobId} to complete (max 20 minutes)...`);
+  const finalStatus = await pollForCompletion(apiKey, apiUrl, jobId);
+
+  // Step 3: Convert to QATestResponse format
+  const response: QATestResponse = {
+    status: finalStatus.status,
+    result: finalStatus.result,
+    error: finalStatus.error || finalStatus.reason,
+    costUsd: finalStatus.costUsd,
+    testDurationSeconds: finalStatus.testDurationSeconds,
+    jobId: finalStatus.id,
+    testerData: finalStatus.testerData as PlaywrightData | undefined,
+  };
+
+  if (finalStatus.status === 'completed') {
+    core.info(`Job ${jobId} completed successfully`);
+  } else {
+    core.warning(`Job ${jobId} ended with status: ${finalStatus.status}`);
+    if (finalStatus.error) {
+      core.warning(`Error: ${finalStatus.error}`);
+    }
+    if (finalStatus.reason) {
+      core.warning(`Reason: ${finalStatus.reason}`);
+    }
+  }
+
+  core.debug(`Test complete: status=${response.status}, success=${response.result?.success}`);
+
+  return response;
+}
+
+/**
+ * Format merge context for validation instructions
+ */
+function formatMergeTestingContext(analysis: AnalyzeMergeResponse, prContext: PRContext | null): string {
+  const mergeSection = `=== Merge Analysis Context ===
+Summary: ${analysis.summary}
+Affected Areas: ${analysis.affectedAreas.join(', ') || 'None specified'}
+
+Test Instructions:
+${analysis.testInstructions}`;
+
+  const prSection = prContext ? formatPRSection(prContext) : '';
+
+  return `${mergeSection}${prSection}
+
+When validating the test results, consider whether the tester's findings confirm that the merged changes work correctly. The test should be marked as passing only if the changes function as expected based on the analysis above.`;
+}
+
+/**
+ * Run a QA test for a merge (no linked issue)
+ */
+export async function runMergeTest(
+  apiKey: string,
+  apiUrl: string,
+  analysis: AnalyzeMergeResponse,
+  testUrl: string,
+  targetDurationMinutes: number,
+  prContext: PRContext | null,
+  githubRepo?: string
+): Promise<QATestResponse> {
+  core.debug(`Running merge QA test on ${testUrl}`);
+
+  // Step 1: Create the job
+  const jobId = await createJob(apiKey, apiUrl, {
+    url: testUrl,
+    description: analysis.testInstructions,
+    outputSchema: analysis.outputSchema,
+    targetDurationMinutes,
+    additionalValidationInstructions: formatMergeTestingContext(analysis, prContext),
     githubRepo,
   });
 

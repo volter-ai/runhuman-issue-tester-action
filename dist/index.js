@@ -30018,6 +30018,103 @@ async function analyzeIssue(apiKey, apiUrl, issue, presetTestUrl, githubRepo) {
 
 /***/ }),
 
+/***/ 8417:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.analyzeMerge = analyzeMerge;
+const core = __importStar(__nccwpck_require__(7184));
+/**
+ * Call the Runhuman API to analyze a merge for testability
+ */
+async function analyzeMerge(apiKey, apiUrl, commits, fileChanges, diffContent, testUrl, prTitle, prBody, githubRepo) {
+    const endpoint = `${apiUrl}/api/merge-analyzer`;
+    core.debug(`Analyzing merge: ${commits.length} commits, ${fileChanges.length} files`);
+    core.debug(`Diff content size: ${diffContent.length} chars`);
+    if (githubRepo) {
+        core.debug(`Using GitHub repo context: ${githubRepo}`);
+    }
+    const requestBody = {
+        commits,
+        fileChanges,
+        diffContent,
+        testUrl,
+        prTitle,
+        prBody,
+        githubRepo,
+    };
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'runhuman-issue-tester-action/1.0.0',
+        },
+        body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(60000), // 1 minute timeout for analysis
+    });
+    if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage;
+        try {
+            const errorData = JSON.parse(errorText);
+            errorMessage = errorData.error || errorData.message || errorText;
+        }
+        catch {
+            errorMessage = errorText;
+        }
+        if (response.status === 401) {
+            throw new Error('Authentication failed: Invalid API key. ' +
+                'Make sure your RUNHUMAN_API_KEY secret is set correctly.');
+        }
+        throw new Error(`Merge analysis failed (${response.status}): ${errorMessage}`);
+    }
+    const data = (await response.json());
+    core.debug(`Analysis complete: isTestable=${data.isTestable}, confidence=${data.confidence}`);
+    if (data.isTestable) {
+        core.debug(`Affected areas: ${data.affectedAreas.join(', ')}`);
+    }
+    return data;
+}
+//# sourceMappingURL=analyze-merge.js.map
+
+/***/ }),
+
 /***/ 4338:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -30058,6 +30155,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.runQATest = runQATest;
+exports.runMergeTest = runMergeTest;
 const core = __importStar(__nccwpck_require__(7184));
 // Terminal states that indicate the job is done
 const TERMINAL_STATES = ['completed', 'error', 'abandoned', 'incomplete'];
@@ -30262,6 +30360,63 @@ async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes, issue,
         outputSchema: analysis.outputSchema,
         targetDurationMinutes,
         additionalValidationInstructions: formatTestingContext(issue, prContext),
+        githubRepo,
+    });
+    // Step 2: Poll for completion
+    core.info(`Waiting for job ${jobId} to complete (max 20 minutes)...`);
+    const finalStatus = await pollForCompletion(apiKey, apiUrl, jobId);
+    // Step 3: Convert to QATestResponse format
+    const response = {
+        status: finalStatus.status,
+        result: finalStatus.result,
+        error: finalStatus.error || finalStatus.reason,
+        costUsd: finalStatus.costUsd,
+        testDurationSeconds: finalStatus.testDurationSeconds,
+        jobId: finalStatus.id,
+        testerData: finalStatus.testerData,
+    };
+    if (finalStatus.status === 'completed') {
+        core.info(`Job ${jobId} completed successfully`);
+    }
+    else {
+        core.warning(`Job ${jobId} ended with status: ${finalStatus.status}`);
+        if (finalStatus.error) {
+            core.warning(`Error: ${finalStatus.error}`);
+        }
+        if (finalStatus.reason) {
+            core.warning(`Reason: ${finalStatus.reason}`);
+        }
+    }
+    core.debug(`Test complete: status=${response.status}, success=${response.result?.success}`);
+    return response;
+}
+/**
+ * Format merge context for validation instructions
+ */
+function formatMergeTestingContext(analysis, prContext) {
+    const mergeSection = `=== Merge Analysis Context ===
+Summary: ${analysis.summary}
+Affected Areas: ${analysis.affectedAreas.join(', ') || 'None specified'}
+
+Test Instructions:
+${analysis.testInstructions}`;
+    const prSection = prContext ? formatPRSection(prContext) : '';
+    return `${mergeSection}${prSection}
+
+When validating the test results, consider whether the tester's findings confirm that the merged changes work correctly. The test should be marked as passing only if the changes function as expected based on the analysis above.`;
+}
+/**
+ * Run a QA test for a merge (no linked issue)
+ */
+async function runMergeTest(apiKey, apiUrl, analysis, testUrl, targetDurationMinutes, prContext, githubRepo) {
+    core.debug(`Running merge QA test on ${testUrl}`);
+    // Step 1: Create the job
+    const jobId = await createJob(apiKey, apiUrl, {
+        url: testUrl,
+        description: analysis.testInstructions,
+        outputSchema: analysis.outputSchema,
+        targetDurationMinutes,
+        additionalValidationInstructions: formatMergeTestingContext(analysis, prContext),
         githubRepo,
     });
     // Step 2: Poll for completion
@@ -30750,6 +30905,151 @@ async function getIssueByNumber(githubToken, issueNumber) {
 
 /***/ }),
 
+/***/ 2217:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isMergeCommit = isMergeCommit;
+exports.getMergeData = getMergeData;
+const github = __importStar(__nccwpck_require__(5683));
+const core = __importStar(__nccwpck_require__(7184));
+/** Maximum diff content size to send to the API (in characters) */
+const MAX_DIFF_CONTENT_SIZE = 15000;
+/**
+ * Check if the current commit is a merge commit (has 2+ parents)
+ */
+async function isMergeCommit(githubToken) {
+    const octokit = github.getOctokit(githubToken);
+    const { owner, repo } = github.context.repo;
+    const commitSha = github.context.sha;
+    core.debug(`Checking if commit ${commitSha} is a merge commit`);
+    try {
+        const { data: commit } = await octokit.rest.git.getCommit({
+            owner,
+            repo,
+            commit_sha: commitSha,
+        });
+        const isMerge = commit.parents.length >= 2;
+        core.debug(`Commit ${commitSha} has ${commit.parents.length} parent(s) - isMerge: ${isMerge}`);
+        return isMerge;
+    }
+    catch (error) {
+        core.warning(`Error checking if commit is merge: ${error instanceof Error ? error.message : error}`);
+        return false;
+    }
+}
+/**
+ * Get merge data including commits, file changes, and diff content
+ */
+async function getMergeData(githubToken) {
+    const octokit = github.getOctokit(githubToken);
+    const { owner, repo } = github.context.repo;
+    const commitSha = github.context.sha;
+    try {
+        // First, get the commit to find its parents
+        const { data: commit } = await octokit.rest.git.getCommit({
+            owner,
+            repo,
+            commit_sha: commitSha,
+        });
+        if (commit.parents.length < 2) {
+            core.debug('Not a merge commit, cannot get merge data');
+            return null;
+        }
+        // Compare with the first parent (the base branch before merge)
+        const baseSha = commit.parents[0].sha;
+        core.info(`Comparing ${baseSha.slice(0, 7)}...${commitSha.slice(0, 7)} to get merge changes`);
+        // Get the comparison which includes commits, files, and patches
+        const { data: comparison } = await octokit.rest.repos.compareCommits({
+            owner,
+            repo,
+            base: baseSha,
+            head: commitSha,
+        });
+        // Extract commits
+        const commits = comparison.commits.map((c) => ({
+            sha: c.sha,
+            message: c.commit.message,
+            author: c.commit.author?.name || c.author?.login || 'unknown',
+            timestamp: c.commit.author?.date || new Date().toISOString(),
+        }));
+        // Extract file changes
+        const fileChanges = (comparison.files || []).map((f) => ({
+            filename: f.filename,
+            status: f.status,
+            additions: f.additions,
+            deletions: f.deletions,
+            previousFilename: f.previous_filename,
+        }));
+        // Build diff content from patches
+        const diffParts = [];
+        let currentSize = 0;
+        for (const file of comparison.files || []) {
+            if (!file.patch)
+                continue;
+            const fileDiff = `--- ${file.filename} ---\n${file.patch}`;
+            const fileSize = fileDiff.length;
+            // Check if adding this file would exceed the limit
+            if (currentSize + fileSize > MAX_DIFF_CONTENT_SIZE) {
+                // Add truncation notice
+                diffParts.push(`\n... (diff truncated, ${comparison.files?.length || 0} total files changed)`);
+                break;
+            }
+            diffParts.push(fileDiff);
+            currentSize += fileSize;
+        }
+        const diffContent = diffParts.join('\n\n');
+        core.info(`Merge data: ${commits.length} commits, ${fileChanges.length} files, ${diffContent.length} chars of diff`);
+        return {
+            commits,
+            fileChanges,
+            diffContent,
+        };
+    }
+    catch (error) {
+        core.warning(`Error getting merge data: ${error instanceof Error ? error.message : error}`);
+        return null;
+    }
+}
+//# sourceMappingURL=merge-detection.js.map
+
+/***/ }),
+
 /***/ 715:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -30926,6 +31226,7 @@ function parseInputs() {
     const issueNumberStr = core.getInput('issue-number');
     const testUrlStr = core.getInput('test-url');
     const issuePatternStr = core.getInput('issue-pattern');
+    const testMerges = core.getInput('test-merges') !== 'false';
     // Validate API key format
     if (!apiKey.startsWith('qa_live_')) {
         throw new Error('Invalid API key format. API keys must start with "qa_live_". ' +
@@ -30980,6 +31281,7 @@ function parseInputs() {
         testUrl,
         issuePattern,
         githubRepo,
+        testMerges,
     };
 }
 /**
@@ -31041,10 +31343,12 @@ const core = __importStar(__nccwpck_require__(7184));
 const github = __importStar(__nccwpck_require__(5683));
 const input_parser_1 = __nccwpck_require__(8959);
 const linked_issues_1 = __nccwpck_require__(7783);
+const merge_detection_1 = __nccwpck_require__(2217);
 const pr_context_1 = __nccwpck_require__(715);
 const issue_commenter_1 = __nccwpck_require__(2143);
 const issue_manager_1 = __nccwpck_require__(7638);
 const analyze_issue_1 = __nccwpck_require__(4174);
+const analyze_merge_1 = __nccwpck_require__(8417);
 const run_test_1 = __nccwpck_require__(4338);
 /**
  * Main entry point for the action
@@ -31132,7 +31436,24 @@ async function run() {
                 core.info(`Found ${commitIssues.length} issue(s) referenced in commit message`);
             }
             if (linkedIssues.length === 0) {
-                core.info('No linked issues found, nothing to test');
+                // No linked issues - check if we should test the merge itself
+                if (inputs.testMerges && inputs.testUrl) {
+                    core.info('No linked issues found, checking if this is a testable merge...');
+                    const mergeResult = await processMergeTest(inputs, results, prContext);
+                    if (mergeResult) {
+                        // Merge test was processed - set outputs and create summary
+                        setOutputs(results);
+                        await createMergeSummary(results, mergeResult);
+                        return;
+                    }
+                    // Merge test was not run (not a merge commit or not testable) - fall through
+                }
+                else if (inputs.testMerges && !inputs.testUrl) {
+                    core.info('No linked issues found. Provide test-url to enable merge testing.');
+                }
+                else {
+                    core.info('No linked issues found, merge testing disabled.');
+                }
                 setOutputs(results);
                 return;
             }
@@ -31279,6 +31600,68 @@ async function processIssue(issue, inputs, results, prContext) {
     }
 }
 /**
+ * Process a merge test when no linked issues are found
+ * Returns the merge test result if a test was run, null otherwise
+ */
+async function processMergeTest(inputs, results, prContext) {
+    const result = {
+        status: 'skipped',
+        passed: false,
+    };
+    try {
+        // Check if this is a merge commit
+        if (!(await (0, merge_detection_1.isMergeCommit)(inputs.githubToken))) {
+            core.info('Not a merge commit, skipping merge test');
+            return null;
+        }
+        core.info('Detected merge commit, fetching merge data...');
+        // Get merge data (commits, file changes, diff content)
+        const mergeData = await (0, merge_detection_1.getMergeData)(inputs.githubToken);
+        if (!mergeData) {
+            core.warning('Failed to get merge data');
+            return null;
+        }
+        core.info(`Merge contains ${mergeData.commits.length} commits and ${mergeData.fileChanges.length} file changes`);
+        // Analyze the merge for testability
+        core.info('Analyzing merge for testability...');
+        const analysis = await (0, analyze_merge_1.analyzeMerge)(inputs.apiKey, inputs.apiUrl, mergeData.commits, mergeData.fileChanges, mergeData.diffContent, inputs.testUrl, prContext?.title, prContext?.body, inputs.githubRepo);
+        result.analysis = analysis;
+        if (!analysis.isTestable) {
+            core.info(`Merge is not testable: ${analysis.reason}`);
+            result.status = 'skipped';
+            result.skipReason = analysis.reason || 'Changes not testable by human';
+            return result;
+        }
+        core.info(`Merge is testable (confidence: ${analysis.confidence})`);
+        core.info(`Summary: ${analysis.summary}`);
+        core.info(`Affected areas: ${analysis.affectedAreas.join(', ')}`);
+        // Run the QA test
+        core.info(`Running QA test for merge on ${inputs.testUrl}...`);
+        const testResult = await (0, run_test_1.runMergeTest)(inputs.apiKey, inputs.apiUrl, analysis, inputs.testUrl, inputs.targetDurationMinutes, prContext, inputs.githubRepo);
+        result.testResult = testResult;
+        result.status = 'tested';
+        result.passed = testResult.result?.success ?? false;
+        // Track cost
+        if (testResult.costUsd) {
+            results.totalCostUsd += testResult.costUsd;
+        }
+        if (result.passed) {
+            core.info('Merge test PASSED');
+        }
+        else {
+            core.info('Merge test FAILED');
+        }
+        return result;
+    }
+    catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        core.warning(`Error processing merge test: ${errorMessage}`);
+        result.status = 'error';
+        result.error = errorMessage;
+        return result;
+    }
+}
+/**
  * Set action outputs
  */
 function setOutputs(results) {
@@ -31333,6 +31716,59 @@ async function createSummary(results) {
             }
             summary.addEOL();
         }
+    }
+    summary.addRaw('\n---\n');
+    summary.addRaw('Powered by [Runhuman](https://runhuman.com)');
+    await summary.write();
+}
+/**
+ * Create a workflow summary for merge tests (no issues)
+ */
+async function createMergeSummary(results, mergeResult) {
+    const summary = core.summary;
+    summary.addHeading('Merge Test Results', 2);
+    const statusEmoji = mergeResult.status === 'tested'
+        ? mergeResult.passed
+            ? '\u2705'
+            : '\u274C'
+        : mergeResult.status === 'skipped'
+            ? '\u23ED\uFE0F'
+            : '\u26A0\uFE0F';
+    // Overview
+    summary.addRaw(`**Status:** ${statusEmoji} `);
+    if (mergeResult.status === 'tested') {
+        summary.addRaw(mergeResult.passed ? 'Passed' : 'Failed');
+    }
+    else if (mergeResult.status === 'skipped') {
+        summary.addRaw(`Skipped - ${mergeResult.skipReason}`);
+    }
+    else {
+        summary.addRaw(`Error - ${mergeResult.error}`);
+    }
+    summary.addEOL();
+    summary.addEOL();
+    // Cost if available
+    if (mergeResult.testResult?.costUsd) {
+        summary.addRaw(`**Cost:** $${mergeResult.testResult.costUsd.toFixed(4)}`);
+        summary.addEOL();
+    }
+    // Analysis summary if available
+    if (mergeResult.analysis) {
+        summary.addHeading('Analysis', 3);
+        summary.addRaw(`**Summary:** ${mergeResult.analysis.summary}`);
+        summary.addEOL();
+        if (mergeResult.analysis.affectedAreas.length > 0) {
+            summary.addRaw(`**Affected Areas:** ${mergeResult.analysis.affectedAreas.join(', ')}`);
+            summary.addEOL();
+        }
+        summary.addRaw(`**Confidence:** ${(mergeResult.analysis.confidence * 100).toFixed(0)}%`);
+        summary.addEOL();
+    }
+    // Test result details if available
+    if (mergeResult.testResult?.result) {
+        summary.addHeading('Test Result', 3);
+        summary.addRaw(`**Explanation:** ${mergeResult.testResult.result.explanation}`);
+        summary.addEOL();
     }
     summary.addRaw('\n---\n');
     summary.addRaw('Powered by [Runhuman](https://runhuman.com)');
@@ -33234,6 +33670,7 @@ __nccwpck_require__.d(__webpack_exports__, {
   defineRoute: () => (/* reexport */ defineRoute),
   formatResultValue: () => (/* reexport */ formatResultValue),
   isActiveStatus: () => (/* reexport */ isActiveStatus),
+  isPostTestStatus: () => (/* reexport */ isPostTestStatus),
   isTerminalStatus: () => (/* reexport */ isTerminalStatus),
   parsePaginationParams: () => (/* reexport */ parsePaginationParams),
   webRoutes: () => (/* reexport */ webRoutes)
@@ -33244,6 +33681,7 @@ const JOB_STATUS = {
     PENDING: 'pending',
     WAITING: 'waiting',
     WORKING: 'working',
+    CREATING_ISSUES: 'creating_issues',
     COMPLETED: 'completed',
     INCOMPLETE: 'incomplete',
     ABANDONED: 'abandoned',
@@ -33254,6 +33692,9 @@ function isTerminalStatus(status) {
 }
 function isActiveStatus(status) {
     return ['pending', 'waiting', 'working'].includes(status);
+}
+function isPostTestStatus(status) {
+    return status === 'creating_issues';
 }
 //# sourceMappingURL=job-status.js.map
 ;// CONCATENATED MODULE: ../shared/dist/job/index.js
@@ -33466,6 +33907,8 @@ const apiRoutes = {
     githubInstallationRefresh: defineRoute('/github/installations/:installationId/refresh'),
     /** List accessible repos across all installations */
     githubRepos: defineRoute('/github/repos'),
+    /** Check if user has access to a specific repo */
+    githubRepoCheckAccess: defineRoute('/github/repos/check-access'),
     /** List issues for a repo (by owner/repo) */
     githubIssuesByRepo: defineRoute('/github/issues/:owner/:repo'),
     /** List issues (by projectId query param) */
@@ -33497,6 +33940,8 @@ const apiRoutes = {
     templates: defineRoute('/templates'),
     /** Issue analyzer */
     issueAnalyzer: defineRoute('/issue-analyzer'),
+    /** Merge analyzer */
+    mergeAnalyzer: defineRoute('/merge-analyzer'),
     /** Logs endpoint */
     logs: defineRoute('/logs'),
 };

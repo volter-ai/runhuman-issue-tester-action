@@ -51,6 +51,10 @@ inputs:
   issue-pattern:
     description: 'Custom regex pattern to detect issue numbers in commit messages (must have a capture group for the issue number)'
     required: false
+  test-merges:
+    description: 'Test merge commits that have no linked issues (requires test-url)'
+    required: false
+    default: 'true'
 
 outputs:
   tested-issues:

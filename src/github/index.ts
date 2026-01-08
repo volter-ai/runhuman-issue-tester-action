@@ -8,3 +8,4 @@ export {
   removeLabel,
   ensureIssueClosed,
 } from './issue-manager';
+export { isMergeCommit, getMergeData } from './merge-detection';

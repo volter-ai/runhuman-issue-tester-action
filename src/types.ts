@@ -2,6 +2,10 @@
 export type {
   AnalyzeIssueResponse,
   AnalyzeIssueRequest,
+  AnalyzeMergeRequest,
+  AnalyzeMergeResponse,
+  MergeCommit,
+  MergeFileChange,
   PlaywrightData,
   QATestResult,
 } from '@runhuman/shared';
@@ -31,6 +35,8 @@ export interface ParsedInputs {
   issuePattern: string | null;
   /** GitHub repository (owner/repo format) for context - provides README.md and CLAUDE.md to the LLM */
   githubRepo: string;
+  /** Test merge commits that have no linked issues (requires testUrl) */
+  testMerges: boolean;
 }
 
 /**
@@ -99,4 +105,16 @@ export interface PRContext {
   author: string;
   /** All comments (general + review) - filtered and sorted chronologically */
   comments: PRComment[];
+}
+
+/**
+ * Result of testing a merge (without linked issues)
+ */
+export interface MergeTestResult {
+  status: 'tested' | 'skipped' | 'error';
+  passed: boolean;
+  testResult?: QATestResult;
+  analysis?: import('@runhuman/shared').AnalyzeMergeResponse;
+  error?: string;
+  skipReason?: string;
 }

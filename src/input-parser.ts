@@ -18,6 +18,7 @@ export function parseInputs(): ParsedInputs {
   const issueNumberStr = core.getInput('issue-number');
   const testUrlStr = core.getInput('test-url');
   const issuePatternStr = core.getInput('issue-pattern');
+  const testMerges = core.getInput('test-merges') !== 'false';
 
   // Validate API key format
   if (!apiKey.startsWith('qa_live_')) {
@@ -80,6 +81,7 @@ export function parseInputs(): ParsedInputs {
     testUrl,
     issuePattern,
     githubRepo,
+    testMerges,
   };
 }
 

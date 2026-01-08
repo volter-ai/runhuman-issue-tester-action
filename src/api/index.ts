@@ -1,2 +1,3 @@
 export { analyzeIssue } from './analyze-issue';
-export { runQATest } from './run-test';
+export { analyzeMerge } from './analyze-merge';
+export { runQATest, runMergeTest } from './run-test';

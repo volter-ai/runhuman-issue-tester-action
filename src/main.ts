@@ -2,12 +2,14 @@ import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { parseInputs } from './input-parser';
 import { getLinkedIssues, getIssueByNumber, hasLabel, findMergedPRForCommit, getIssuesFromCommitMessage } from './github/linked-issues';
+import { isMergeCommit, getMergeData } from './github/merge-detection';
 import { getPRContext } from './github/pr-context';
 import { postTestResultComment } from './github/issue-commenter';
 import { reopenIssue, addLabel, removeLabel, ensureIssueClosed } from './github/issue-manager';
 import { analyzeIssue } from './api/analyze-issue';
-import { runQATest } from './api/run-test';
-import type { ActionResults, IssueTestResult, LinkedIssue, PRContext } from './types';
+import { analyzeMerge } from './api/analyze-merge';
+import { runQATest, runMergeTest } from './api/run-test';
+import type { ActionResults, IssueTestResult, LinkedIssue, PRContext, MergeTestResult } from './types';
 
 /**
  * Main entry point for the action
@@ -104,7 +106,22 @@ async function run(): Promise<void> {
       }
 
       if (linkedIssues.length === 0) {
-        core.info('No linked issues found, nothing to test');
+        // No linked issues - check if we should test the merge itself
+        if (inputs.testMerges && inputs.testUrl) {
+          core.info('No linked issues found, checking if this is a testable merge...');
+          const mergeResult = await processMergeTest(inputs, results, prContext);
+          if (mergeResult) {
+            // Merge test was processed - set outputs and create summary
+            setOutputs(results);
+            await createMergeSummary(results, mergeResult);
+            return;
+          }
+          // Merge test was not run (not a merge commit or not testable) - fall through
+        } else if (inputs.testMerges && !inputs.testUrl) {
+          core.info('No linked issues found. Provide test-url to enable merge testing.');
+        } else {
+          core.info('No linked issues found, merge testing disabled.');
+        }
         setOutputs(results);
         return;
       }
@@ -292,6 +309,101 @@ async function processIssue(
 }
 
 /**
+ * Process a merge test when no linked issues are found
+ * Returns the merge test result if a test was run, null otherwise
+ */
+async function processMergeTest(
+  inputs: ReturnType<typeof parseInputs>,
+  results: ActionResults,
+  prContext: PRContext | null
+): Promise<MergeTestResult | null> {
+  const result: MergeTestResult = {
+    status: 'skipped',
+    passed: false,
+  };
+
+  try {
+    // Check if this is a merge commit
+    if (!(await isMergeCommit(inputs.githubToken))) {
+      core.info('Not a merge commit, skipping merge test');
+      return null;
+    }
+
+    core.info('Detected merge commit, fetching merge data...');
+
+    // Get merge data (commits, file changes, diff content)
+    const mergeData = await getMergeData(inputs.githubToken);
+    if (!mergeData) {
+      core.warning('Failed to get merge data');
+      return null;
+    }
+
+    core.info(`Merge contains ${mergeData.commits.length} commits and ${mergeData.fileChanges.length} file changes`);
+
+    // Analyze the merge for testability
+    core.info('Analyzing merge for testability...');
+    const analysis = await analyzeMerge(
+      inputs.apiKey,
+      inputs.apiUrl,
+      mergeData.commits,
+      mergeData.fileChanges,
+      mergeData.diffContent,
+      inputs.testUrl!,
+      prContext?.title,
+      prContext?.body,
+      inputs.githubRepo
+    );
+    result.analysis = analysis;
+
+    if (!analysis.isTestable) {
+      core.info(`Merge is not testable: ${analysis.reason}`);
+      result.status = 'skipped';
+      result.skipReason = analysis.reason || 'Changes not testable by human';
+      return result;
+    }
+
+    core.info(`Merge is testable (confidence: ${analysis.confidence})`);
+    core.info(`Summary: ${analysis.summary}`);
+    core.info(`Affected areas: ${analysis.affectedAreas.join(', ')}`);
+
+    // Run the QA test
+    core.info(`Running QA test for merge on ${inputs.testUrl}...`);
+    const testResult = await runMergeTest(
+      inputs.apiKey,
+      inputs.apiUrl,
+      analysis,
+      inputs.testUrl!,
+      inputs.targetDurationMinutes,
+      prContext,
+      inputs.githubRepo
+    );
+    result.testResult = testResult;
+    result.status = 'tested';
+    result.passed = testResult.result?.success ?? false;
+
+    // Track cost
+    if (testResult.costUsd) {
+      results.totalCostUsd += testResult.costUsd;
+    }
+
+    if (result.passed) {
+      core.info('Merge test PASSED');
+    } else {
+      core.info('Merge test FAILED');
+    }
+
+    return result;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    core.warning(`Error processing merge test: ${errorMessage}`);
+
+    result.status = 'error';
+    result.error = errorMessage;
+    return result;
+  }
+}
+
+/**
  * Set action outputs
  */
 function setOutputs(results: ActionResults): void {
@@ -353,6 +465,67 @@ async function createSummary(results: ActionResults): Promise<void> {
 
       summary.addEOL();
     }
+  }
+
+  summary.addRaw('\n---\n');
+  summary.addRaw('Powered by [Runhuman](https://runhuman.com)');
+
+  await summary.write();
+}
+
+/**
+ * Create a workflow summary for merge tests (no issues)
+ */
+async function createMergeSummary(results: ActionResults, mergeResult: MergeTestResult): Promise<void> {
+  const summary = core.summary;
+
+  summary.addHeading('Merge Test Results', 2);
+
+  const statusEmoji =
+    mergeResult.status === 'tested'
+      ? mergeResult.passed
+        ? '\u2705'
+        : '\u274C'
+      : mergeResult.status === 'skipped'
+        ? '\u23ED\uFE0F'
+        : '\u26A0\uFE0F';
+
+  // Overview
+  summary.addRaw(`**Status:** ${statusEmoji} `);
+  if (mergeResult.status === 'tested') {
+    summary.addRaw(mergeResult.passed ? 'Passed' : 'Failed');
+  } else if (mergeResult.status === 'skipped') {
+    summary.addRaw(`Skipped - ${mergeResult.skipReason}`);
+  } else {
+    summary.addRaw(`Error - ${mergeResult.error}`);
+  }
+  summary.addEOL();
+  summary.addEOL();
+
+  // Cost if available
+  if (mergeResult.testResult?.costUsd) {
+    summary.addRaw(`**Cost:** $${mergeResult.testResult.costUsd.toFixed(4)}`);
+    summary.addEOL();
+  }
+
+  // Analysis summary if available
+  if (mergeResult.analysis) {
+    summary.addHeading('Analysis', 3);
+    summary.addRaw(`**Summary:** ${mergeResult.analysis.summary}`);
+    summary.addEOL();
+    if (mergeResult.analysis.affectedAreas.length > 0) {
+      summary.addRaw(`**Affected Areas:** ${mergeResult.analysis.affectedAreas.join(', ')}`);
+      summary.addEOL();
+    }
+    summary.addRaw(`**Confidence:** ${(mergeResult.analysis.confidence * 100).toFixed(0)}%`);
+    summary.addEOL();
+  }
+
+  // Test result details if available
+  if (mergeResult.testResult?.result) {
+    summary.addHeading('Test Result', 3);
+    summary.addRaw(`**Explanation:** ${mergeResult.testResult.result.explanation}`);
+    summary.addEOL();
   }
 
   summary.addRaw('\n---\n');
