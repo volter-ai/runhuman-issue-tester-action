@@ -70,6 +70,7 @@ jobs:
 | `reopen-on-failure` | No | `true` | Reopen issue if test fails |
 | `failure-label` | No | `qa-failed` | Label to add when test fails |
 | `remove-failure-label-on-success` | No | `true` | Remove failure label on pass |
+| `close-on-success` | No | `true` | Close issue when test passes |
 | `test-merges` | No | `true` | Test merge commits with no linked issues (requires test-url) |
 | `auto-mode-only-missing-media` | No | `false` | Only test issues missing reproduction media (AI analyzes issue + comments) |
 | `api-url` | No | `https://runhuman.com` | Runhuman API base URL |
@@ -136,6 +137,7 @@ issue-filter: 'state:open stale:30d unassigned'
 | state | `state:open`, `state:closed`, `state:all` | Issue state (default: open) |
 | age | `age:>30d` | Created more than X days ago |
 | stale | `stale:30d` | No activity in X days |
+| active | `active:7d` | Has activity in last X days |
 | unassigned | `unassigned` | No assignee |
 | assigned | `assigned:username` | Assigned to specific user |
 | label | `label:bug`, `label:bug,enhancement` | Has specific label(s) |

@@ -9,6 +9,7 @@ export interface IssueFilterOptions {
   state: 'open' | 'closed' | 'all';
   ageGreaterThanDays?: number;
   staleDays?: number;
+  activeDays?: number;
   unassigned?: boolean;
   assignee?: string;
   labels?: string[];
@@ -24,6 +25,7 @@ export interface IssueFilterOptions {
  * - state:open, state:closed, state:all
  * - age:>30d (created more than 30 days ago)
  * - stale:30d (no activity in 30 days)
+ * - active:7d (has activity in last 7 days)
  * - unassigned
  * - assigned:username
  * - label:bug or label:bug,enhancement
@@ -95,6 +97,10 @@ export function parseIssueFilter(filter: string): IssueFilterOptions {
 
       case 'stale':
         options.staleDays = parseDays(value, 'stale');
+        break;
+
+      case 'active':
+        options.activeDays = parseDays(value, 'active');
         break;
 
       case 'assigned':
@@ -212,10 +218,11 @@ export async function queryIssuesWithFilter(
     queryParams.labels = options.labels.join(',');
   }
 
-  // Calculate date cutoffs for age/stale filters
+  // Calculate date cutoffs for age/stale/active filters
   const now = new Date();
   let createdBefore: Date | undefined;
   let updatedBefore: Date | undefined;
+  let updatedAfter: Date | undefined;
 
   if (options.ageGreaterThanDays !== undefined) {
     createdBefore = new Date(now.getTime() - options.ageGreaterThanDays * 24 * 60 * 60 * 1000);
@@ -223,6 +230,10 @@ export async function queryIssuesWithFilter(
 
   if (options.staleDays !== undefined) {
     updatedBefore = new Date(now.getTime() - options.staleDays * 24 * 60 * 60 * 1000);
+  }
+
+  if (options.activeDays !== undefined) {
+    updatedAfter = new Date(now.getTime() - options.activeDays * 24 * 60 * 60 * 1000);
   }
 
   // Fetch issues (may need multiple pages if maxIssues > 100)
@@ -250,6 +261,11 @@ export async function queryIssuesWithFilter(
       if (updatedBefore) {
         const updatedAt = new Date(issue.updated_at);
         if (updatedAt >= updatedBefore) continue;
+      }
+
+      if (updatedAfter) {
+        const updatedAt = new Date(issue.updated_at);
+        if (updatedAt < updatedAfter) continue;
       }
 
       // Apply media filters (client-side, body inspection)

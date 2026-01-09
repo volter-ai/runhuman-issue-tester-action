@@ -16,6 +16,7 @@ export function parseInputs(): ParsedInputs {
   const reopenOnFailure = core.getInput('reopen-on-failure') !== 'false';
   const failureLabel = core.getInput('failure-label') || 'qa-failed';
   const removeFailureLabelOnSuccess = core.getInput('remove-failure-label-on-success') !== 'false';
+  const closeOnSuccess = core.getInput('close-on-success') !== 'false';
   const issueNumberStr = core.getInput('issue-number');
   const issueFilterStr = core.getInput('issue-filter');
   const maxIssuesStr = core.getInput('max-issues') || '10';
@@ -89,6 +90,7 @@ export function parseInputs(): ParsedInputs {
     reopenOnFailure,
     failureLabel,
     removeFailureLabelOnSuccess,
+    closeOnSuccess,
     issueNumbers,
     issueFilter,
     maxIssues,

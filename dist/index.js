@@ -30642,6 +30642,7 @@ const core = __importStar(__nccwpck_require__(7184));
  * - state:open, state:closed, state:all
  * - age:>30d (created more than 30 days ago)
  * - stale:30d (no activity in 30 days)
+ * - active:7d (has activity in last 7 days)
  * - unassigned
  * - assigned:username
  * - label:bug or label:bug,enhancement
@@ -30702,6 +30703,9 @@ function parseIssueFilter(filter) {
                 break;
             case 'stale':
                 options.staleDays = parseDays(value, 'stale');
+                break;
+            case 'active':
+                options.activeDays = parseDays(value, 'active');
                 break;
             case 'assigned':
                 options.assignee = value;
@@ -30795,15 +30799,19 @@ async function queryIssuesWithFilter(githubToken, options, maxIssues) {
     if (options.labels && options.labels.length > 0) {
         queryParams.labels = options.labels.join(',');
     }
-    // Calculate date cutoffs for age/stale filters
+    // Calculate date cutoffs for age/stale/active filters
     const now = new Date();
     let createdBefore;
     let updatedBefore;
+    let updatedAfter;
     if (options.ageGreaterThanDays !== undefined) {
         createdBefore = new Date(now.getTime() - options.ageGreaterThanDays * 24 * 60 * 60 * 1000);
     }
     if (options.staleDays !== undefined) {
         updatedBefore = new Date(now.getTime() - options.staleDays * 24 * 60 * 60 * 1000);
+    }
+    if (options.activeDays !== undefined) {
+        updatedAfter = new Date(now.getTime() - options.activeDays * 24 * 60 * 60 * 1000);
     }
     // Fetch issues (may need multiple pages if maxIssues > 100)
     const allIssues = [];
@@ -30828,6 +30836,11 @@ async function queryIssuesWithFilter(githubToken, options, maxIssues) {
             if (updatedBefore) {
                 const updatedAt = new Date(issue.updated_at);
                 if (updatedAt >= updatedBefore)
+                    continue;
+            }
+            if (updatedAfter) {
+                const updatedAt = new Date(issue.updated_at);
+                if (updatedAt < updatedAfter)
                     continue;
             }
             // Apply media filters (client-side, body inspection)
@@ -31616,6 +31629,7 @@ function parseInputs() {
     const reopenOnFailure = core.getInput('reopen-on-failure') !== 'false';
     const failureLabel = core.getInput('failure-label') || 'qa-failed';
     const removeFailureLabelOnSuccess = core.getInput('remove-failure-label-on-success') !== 'false';
+    const closeOnSuccess = core.getInput('close-on-success') !== 'false';
     const issueNumberStr = core.getInput('issue-number');
     const issueFilterStr = core.getInput('issue-filter');
     const maxIssuesStr = core.getInput('max-issues') || '10';
@@ -31679,6 +31693,7 @@ function parseInputs() {
         reopenOnFailure,
         failureLabel,
         removeFailureLabelOnSuccess,
+        closeOnSuccess,
         issueNumbers,
         issueFilter,
         maxIssues,
@@ -32019,8 +32034,10 @@ async function processIssue(issue, inputs, results, prContext) {
         if (result.passed) {
             core.info(`Issue #${issue.number}: Test PASSED`);
             results.passedIssues.push(issue.number);
-            // Ensure issue is closed and remove failure label
-            await (0, issue_manager_1.ensureIssueClosed)(inputs.githubToken, issue.number);
+            // Close issue and remove failure label
+            if (inputs.closeOnSuccess) {
+                await (0, issue_manager_1.ensureIssueClosed)(inputs.githubToken, issue.number);
+            }
             if (inputs.removeFailureLabelOnSuccess && inputs.failureLabel) {
                 await (0, issue_manager_1.removeLabel)(inputs.githubToken, issue.number, inputs.failureLabel);
             }

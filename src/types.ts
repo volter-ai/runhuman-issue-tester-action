@@ -27,6 +27,7 @@ export interface ParsedInputs {
   reopenOnFailure: boolean;
   failureLabel: string;
   removeFailureLabelOnSuccess: boolean;
+  closeOnSuccess: boolean;
   /** Specific issue number(s) for manual testing (empty = use filter or PR linked issues flow) */
   issueNumbers: number[];
   /** Filter query string for dynamic issue selection (null = use manual or PR linked issues flow) */

@@ -301,8 +301,10 @@ async function processIssue(
       core.info(`Issue #${issue.number}: Test PASSED`);
       results.passedIssues.push(issue.number);
 
-      // Ensure issue is closed and remove failure label
-      await ensureIssueClosed(inputs.githubToken, issue.number);
+      // Close issue and remove failure label
+      if (inputs.closeOnSuccess) {
+        await ensureIssueClosed(inputs.githubToken, issue.number);
+      }
       if (inputs.removeFailureLabelOnSuccess && inputs.failureLabel) {
         await removeLabel(inputs.githubToken, issue.number, inputs.failureLabel);
       }

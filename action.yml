@@ -55,6 +55,10 @@ inputs:
     description: 'Remove failure label when test passes'
     required: false
     default: 'true'
+  close-on-success:
+    description: 'Close issue when test passes'
+    required: false
+    default: 'true'
   issue-pattern:
     description: 'Custom regex pattern to detect issue numbers in commit messages (must have a capture group for the issue number)'
     required: false
