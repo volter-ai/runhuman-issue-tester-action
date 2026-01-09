@@ -29967,8 +29967,9 @@ const core = __importStar(__nccwpck_require__(7184));
  * Call the Runhuman API to analyze a GitHub issue
  * @param presetTestUrl Optional preset URL to use as base - AI will use/enhance this
  * @param githubRepo Optional GitHub repo (owner/repo format) for context
+ * @param onlyMissingMedia If true, AI checks if issue has reproduction media first
  */
-async function analyzeIssue(apiKey, apiUrl, issue, presetTestUrl, githubRepo) {
+async function analyzeIssue(apiKey, apiUrl, issue, presetTestUrl, githubRepo, onlyMissingMedia) {
     const endpoint = `${apiUrl}/api/analyze-issue`;
     core.debug(`Analyzing issue #${issue.number}: "${issue.title}"`);
     if (presetTestUrl) {
@@ -29983,6 +29984,8 @@ async function analyzeIssue(apiKey, apiUrl, issue, presetTestUrl, githubRepo) {
         issueLabels: issue.labels.map((l) => l.name),
         presetTestUrl,
         githubRepo,
+        issueComments: issue.comments,
+        onlyMissingMedia,
     };
     const response = await fetch(endpoint, {
         method: 'POST',
@@ -30516,6 +30519,75 @@ async function postTestResultComment(githubToken, issueNumber, testResult, analy
     core.info(`Posted test result comment to issue #${issueNumber}`);
 }
 //# sourceMappingURL=issue-commenter.js.map
+
+/***/ }),
+
+/***/ 1871:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getIssueComments = getIssueComments;
+const github = __importStar(__nccwpck_require__(5683));
+const core = __importStar(__nccwpck_require__(7184));
+/**
+ * Fetch comments from a GitHub issue
+ * @param githubToken GitHub token for API access
+ * @param issueNumber Issue number to fetch comments for
+ * @param maxComments Maximum number of comments to fetch (default: 20)
+ * @returns Array of comment body strings
+ */
+async function getIssueComments(githubToken, issueNumber, maxComments = 20) {
+    const octokit = github.getOctokit(githubToken);
+    const { owner, repo } = github.context.repo;
+    core.debug(`Fetching comments for issue #${issueNumber} (max: ${maxComments})`);
+    const { data: comments } = await octokit.rest.issues.listComments({
+        owner,
+        repo,
+        issue_number: issueNumber,
+        per_page: maxComments,
+    });
+    const commentBodies = comments
+        .filter((comment) => comment.body)
+        .map((comment) => comment.body);
+    core.debug(`Found ${commentBodies.length} comments for issue #${issueNumber}`);
+    return commentBodies;
+}
+//# sourceMappingURL=issue-comments.js.map
 
 /***/ }),
 
@@ -31550,6 +31622,7 @@ function parseInputs() {
     const testUrlStr = core.getInput('test-url');
     const issuePatternStr = core.getInput('issue-pattern');
     const testMerges = core.getInput('test-merges') !== 'false';
+    const autoModeOnlyMissingMedia = core.getInput('auto-mode-only-missing-media') === 'true';
     // Validate API key format
     if (!apiKey.startsWith('qa_live_')) {
         throw new Error('Invalid API key format. API keys must start with "qa_live_". ' +
@@ -31613,6 +31686,7 @@ function parseInputs() {
         issuePattern,
         githubRepo,
         testMerges,
+        autoModeOnlyMissingMedia,
     };
 }
 /**
@@ -31702,6 +31776,7 @@ const pr_context_1 = __nccwpck_require__(715);
 const issue_commenter_1 = __nccwpck_require__(2143);
 const issue_manager_1 = __nccwpck_require__(7638);
 const issue_filter_1 = __nccwpck_require__(5447);
+const issue_comments_1 = __nccwpck_require__(1871);
 const analyze_issue_1 = __nccwpck_require__(4174);
 const analyze_merge_1 = __nccwpck_require__(8417);
 const run_test_1 = __nccwpck_require__(4338);
@@ -31892,9 +31967,14 @@ async function processIssue(issue, inputs, results, prContext) {
     };
     try {
         core.info(`\n--- Processing issue #${issue.number}: ${issue.title} ---`);
+        // Fetch issue comments if onlyMissingMedia is enabled
+        if (inputs.autoModeOnlyMissingMedia) {
+            core.info(`Fetching comments for issue #${issue.number} (only-missing-media mode)...`);
+            issue.comments = await (0, issue_comments_1.getIssueComments)(inputs.githubToken, issue.number);
+        }
         // Analyze the issue with AI (pass preset URL and repo context if provided)
         core.info(`Analyzing issue #${issue.number}...`);
-        const analysis = await (0, analyze_issue_1.analyzeIssue)(inputs.apiKey, inputs.apiUrl, issue, inputs.testUrl || undefined, inputs.githubRepo);
+        const analysis = await (0, analyze_issue_1.analyzeIssue)(inputs.apiKey, inputs.apiUrl, issue, inputs.testUrl || undefined, inputs.githubRepo, inputs.autoModeOnlyMissingMedia);
         result.analysis = analysis;
         // Check if testable
         if (!analysis.isTestable) {

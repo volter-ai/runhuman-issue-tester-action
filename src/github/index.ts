@@ -15,3 +15,4 @@ export {
   getIssuesByNumbers,
   type IssueFilterOptions,
 } from './issue-filter';
+export { getIssueComments } from './issue-comments';

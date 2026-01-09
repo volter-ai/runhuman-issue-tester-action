@@ -7,6 +7,7 @@ import { getPRContext } from './github/pr-context';
 import { postTestResultComment } from './github/issue-commenter';
 import { reopenIssue, addLabel, removeLabel, ensureIssueClosed } from './github/issue-manager';
 import { parseIssueFilter, queryIssuesWithFilter, getIssuesByNumbers } from './github/issue-filter';
+import { getIssueComments } from './github/issue-comments';
 import { analyzeIssue } from './api/analyze-issue';
 import { analyzeMerge } from './api/analyze-merge';
 import { runQATest, runMergeTest } from './api/run-test';
@@ -221,6 +222,12 @@ async function processIssue(
   try {
     core.info(`\n--- Processing issue #${issue.number}: ${issue.title} ---`);
 
+    // Fetch issue comments if onlyMissingMedia is enabled
+    if (inputs.autoModeOnlyMissingMedia) {
+      core.info(`Fetching comments for issue #${issue.number} (only-missing-media mode)...`);
+      issue.comments = await getIssueComments(inputs.githubToken, issue.number);
+    }
+
     // Analyze the issue with AI (pass preset URL and repo context if provided)
     core.info(`Analyzing issue #${issue.number}...`);
     const analysis = await analyzeIssue(
@@ -228,7 +235,8 @@ async function processIssue(
       inputs.apiUrl,
       issue,
       inputs.testUrl || undefined,
-      inputs.githubRepo
+      inputs.githubRepo,
+      inputs.autoModeOnlyMissingMedia
     );
     result.analysis = analysis;
 

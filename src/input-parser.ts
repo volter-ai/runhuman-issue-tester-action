@@ -22,6 +22,7 @@ export function parseInputs(): ParsedInputs {
   const testUrlStr = core.getInput('test-url');
   const issuePatternStr = core.getInput('issue-pattern');
   const testMerges = core.getInput('test-merges') !== 'false';
+  const autoModeOnlyMissingMedia = core.getInput('auto-mode-only-missing-media') === 'true';
 
   // Validate API key format
   if (!apiKey.startsWith('qa_live_')) {
@@ -95,6 +96,7 @@ export function parseInputs(): ParsedInputs {
     issuePattern,
     githubRepo,
     testMerges,
+    autoModeOnlyMissingMedia,
   };
 }
 

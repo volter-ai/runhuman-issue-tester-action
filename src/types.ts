@@ -41,6 +41,8 @@ export interface ParsedInputs {
   githubRepo: string;
   /** Test merge commits that have no linked issues (requires testUrl) */
   testMerges: boolean;
+  /** Only test issues missing reproduction media (AI analyzes issue + comments) */
+  autoModeOnlyMissingMedia: boolean;
 }
 
 /**
@@ -54,6 +56,8 @@ export interface LinkedIssue {
   labels: Array<{ name: string }>;
   /** Extracted URL for testing (set during processing) */
   _extractedUrl?: string;
+  /** Issue comments for media analysis */
+  comments?: string[];
 }
 
 /**

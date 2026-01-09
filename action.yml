@@ -62,6 +62,10 @@ inputs:
     description: 'Test merge commits that have no linked issues (requires test-url)'
     required: false
     default: 'true'
+  auto-mode-only-missing-media:
+    description: 'Only test issues missing reproduction media (screenshots/videos). AI analyzes issue + comments.'
+    required: false
+    default: 'false'
 
 outputs:
   tested-issues:

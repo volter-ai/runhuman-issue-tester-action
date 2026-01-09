@@ -71,6 +71,7 @@ jobs:
 | `failure-label` | No | `qa-failed` | Label to add when test fails |
 | `remove-failure-label-on-success` | No | `true` | Remove failure label on pass |
 | `test-merges` | No | `true` | Test merge commits with no linked issues (requires test-url) |
+| `auto-mode-only-missing-media` | No | `false` | Only test issues missing reproduction media (AI analyzes issue + comments) |
 | `api-url` | No | `https://runhuman.com` | Runhuman API base URL |
 
 ## Outputs
@@ -203,6 +204,34 @@ To only test explicitly labeled issues:
     auto-detect: 'false'
     qa-label: needs-qa
 ```
+
+### Only Missing Media Mode
+
+When `auto-mode-only-missing-media` is enabled, the action only tests issues that are missing reproduction media (screenshots, videos, GIFs). This is useful for capturing reproduction data for bug reports that lack visual evidence.
+
+```yaml
+- uses: runhuman/issue-tester-action@v1
+  with:
+    api-key: ${{ secrets.RUNHUMAN_API_KEY }}
+    auto-mode-only-missing-media: 'true'
+    test-url: ${{ vars.STAGING_URL }}
+```
+
+**How it works:**
+1. Fetches issue body and comments
+2. AI analyzes if reproduction media exists (screenshots showing the bug, videos, screen recordings)
+3. Issues WITH media are skipped (already have reproduction data)
+4. Issues WITHOUT media proceed to testing (tester will capture reproduction data)
+
+**What counts as reproduction media:**
+- Screenshots showing the bug or behavior
+- Videos demonstrating the issue
+- Animated GIFs showing steps to reproduce
+
+**What does NOT count:**
+- Company logos or avatars
+- Architectural diagrams
+- Code syntax highlighting images
 
 ## Test URL Handling
 

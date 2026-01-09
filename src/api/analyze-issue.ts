@@ -5,13 +5,15 @@ import type { AnalyzeIssueRequest, AnalyzeIssueResponse, LinkedIssue } from '../
  * Call the Runhuman API to analyze a GitHub issue
  * @param presetTestUrl Optional preset URL to use as base - AI will use/enhance this
  * @param githubRepo Optional GitHub repo (owner/repo format) for context
+ * @param onlyMissingMedia If true, AI checks if issue has reproduction media first
  */
 export async function analyzeIssue(
   apiKey: string,
   apiUrl: string,
   issue: LinkedIssue,
   presetTestUrl?: string,
-  githubRepo?: string
+  githubRepo?: string,
+  onlyMissingMedia?: boolean
 ): Promise<AnalyzeIssueResponse> {
   const endpoint = `${apiUrl}/api/analyze-issue`;
 
@@ -29,6 +31,8 @@ export async function analyzeIssue(
     issueLabels: issue.labels.map((l) => l.name),
     presetTestUrl,
     githubRepo,
+    issueComments: issue.comments,
+    onlyMissingMedia,
   };
 
   const response = await fetch(endpoint, {
