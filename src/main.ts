@@ -1,11 +1,12 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { parseInputs } from './input-parser';
-import { getLinkedIssues, getIssueByNumber, hasLabel, findMergedPRForCommit, getIssuesFromCommitMessage } from './github/linked-issues';
+import { getLinkedIssues, hasLabel, findMergedPRForCommit, getIssuesFromCommitMessage } from './github/linked-issues';
 import { isMergeCommit, getMergeData } from './github/merge-detection';
 import { getPRContext } from './github/pr-context';
 import { postTestResultComment } from './github/issue-commenter';
 import { reopenIssue, addLabel, removeLabel, ensureIssueClosed } from './github/issue-manager';
+import { parseIssueFilter, queryIssuesWithFilter, getIssuesByNumbers } from './github/issue-filter';
 import { analyzeIssue } from './api/analyze-issue';
 import { analyzeMerge } from './api/analyze-merge';
 import { runQATest, runMergeTest } from './api/run-test';
@@ -32,18 +33,32 @@ async function run(): Promise<void> {
     let issuesToProcess: LinkedIssue[];
     let prContext: PRContext | null = null;
 
-    // 2. Determine mode: manual (issue-number) or PR merge
-    if (inputs.issueNumber !== null) {
-      // Manual mode: test specific issue (no PR context available)
-      core.info(`Manual mode: Testing issue #${inputs.issueNumber}`);
-      const issue = await getIssueByNumber(inputs.githubToken, inputs.issueNumber);
+    // 2. Determine mode: manual (issue-number), filter (issue-filter), or auto (PR merge)
+    if (inputs.issueNumbers.length > 0) {
+      // Manual mode: test specific issue(s) (no PR context available)
+      core.info(`Manual mode: Testing ${inputs.issueNumbers.length} issue(s): ${inputs.issueNumbers.map(n => `#${n}`).join(', ')}`);
+      const issues = await getIssuesByNumbers(inputs.githubToken, inputs.issueNumbers);
 
-      if (!issue) {
-        core.setFailed(`Issue #${inputs.issueNumber} not found or is a pull request`);
+      if (issues.length === 0) {
+        core.setFailed(`No valid issues found from: ${inputs.issueNumbers.map(n => `#${n}`).join(', ')}`);
         return;
       }
 
-      issuesToProcess = [issue];
+      issuesToProcess = issues;
+    } else if (inputs.issueFilter) {
+      // Filter mode: query issues dynamically
+      core.info(`Filter mode: Querying issues with filter "${inputs.issueFilter}" (max: ${inputs.maxIssues})`);
+      const filterOptions = parseIssueFilter(inputs.issueFilter);
+      const issues = await queryIssuesWithFilter(inputs.githubToken, filterOptions, inputs.maxIssues);
+
+      if (issues.length === 0) {
+        core.info('No issues matched the filter criteria');
+        setOutputs(results);
+        return;
+      }
+
+      core.info(`Found ${issues.length} issue(s) matching filter`);
+      issuesToProcess = issues;
     } else {
       // PR merge mode: get linked issues from merged PR
       let prNumber: number | null = null;

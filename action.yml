@@ -8,8 +8,15 @@ branding:
 
 inputs:
   issue-number:
-    description: 'Specific issue number to test (bypasses PR merge detection for manual testing)'
+    description: 'Specific issue number(s) to test, comma-separated (e.g., "123" or "123, 456, 789"). Bypasses filter and auto-detection.'
     required: false
+  issue-filter:
+    description: 'Filter query for dynamic issue selection (e.g., "state:open stale:30d unassigned"). See README for syntax.'
+    required: false
+  max-issues:
+    description: 'Maximum issues to process when using filter mode (default: 10)'
+    required: false
+    default: '10'
   test-url:
     description: 'Manual test URL (overrides AI-detected URL from issue)'
     required: false

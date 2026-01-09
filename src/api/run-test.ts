@@ -39,7 +39,6 @@ const TERMINAL_STATES = ['completed', 'error', 'abandoned', 'incomplete'];
 
 // Polling configuration
 const POLL_INTERVAL_MS = 60000; // 1 minute between polls
-const MAX_POLL_DURATION_MS = 20 * 60 * 1000; // 20 minutes max
 
 /**
  * Create a QA test job via the async API
@@ -155,20 +154,10 @@ async function pollForCompletion(
   jobId: string
 ): Promise<JobStatusResponse> {
   const startTime = Date.now();
-  let lastStatus = '';
 
   while (true) {
     const elapsed = Date.now() - startTime;
-
-    if (elapsed > MAX_POLL_DURATION_MS) {
-      throw new Error(
-        `Job ${jobId} did not complete within 20 minutes. ` +
-          `Last status: ${lastStatus}. The job may still be running - check the Runhuman dashboard.`
-      );
-    }
-
     const status = await getJobStatus(apiKey, apiUrl, jobId);
-    lastStatus = status.status;
 
     // Log status changes
     core.info(`Job ${jobId} status: ${status.status} (${Math.round(elapsed / 1000)}s elapsed)`);
@@ -303,7 +292,7 @@ export async function runQATest(
   });
 
   // Step 2: Poll for completion
-  core.info(`Waiting for job ${jobId} to complete (max 20 minutes)...`);
+  core.info(`Waiting for job ${jobId} to complete...`);
   const finalStatus = await pollForCompletion(apiKey, apiUrl, jobId);
 
   // Step 3: Convert to QATestResponse format
@@ -377,7 +366,7 @@ export async function runMergeTest(
   });
 
   // Step 2: Poll for completion
-  core.info(`Waiting for job ${jobId} to complete (max 20 minutes)...`);
+  core.info(`Waiting for job ${jobId} to complete...`);
   const finalStatus = await pollForCompletion(apiKey, apiUrl, jobId);
 
   // Step 3: Convert to QATestResponse format

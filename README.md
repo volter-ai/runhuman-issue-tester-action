@@ -2,13 +2,32 @@
 
 Automatically test linked GitHub Issues when PRs are merged using AI-powered human QA testing.
 
-## How It Works
+## Issue Selection Modes
 
-1. When a PR is merged to main (via `push` or `pull_request` event)
-2. Action finds linked issues from PR references AND commit message keywords
-3. AI analyzes each issue to determine if it's human-testable
-4. Real human testers verify the fix via the test URL
-5. Results posted as comments; issues reopened on failure
+The action supports three ways to select which issues to test:
+
+### 1. Auto Mode (Default)
+Automatically detects issues from PR merges:
+- Issues linked via "Closes #123" in PR description
+- Issues referenced in commit messages (fix, close, resolve keywords)
+- Best for CI/CD pipelines triggered by PR merges
+
+### 2. Manual Mode
+Test specific issue(s) by number:
+```yaml
+issue-number: '123'           # Single issue
+issue-number: '123, 456, 789' # Multiple issues
+```
+
+### 3. Filter Mode
+Query issues dynamically with filters:
+```yaml
+issue-filter: 'state:open stale:30d unassigned'
+```
+
+See [Issue Filtering](#issue-filtering) for full syntax.
+
+**Priority:** `issue-number` > `issue-filter` > auto-detection
 
 ## Quick Start
 
@@ -40,7 +59,9 @@ jobs:
 |-------|----------|---------|-------------|
 | `api-key` | Yes | - | Runhuman API key (starts with `qa_live_`) |
 | `github-token` | No | `${{ github.token }}` | GitHub token for API access |
-| `issue-number` | No | - | Test a specific issue (bypasses PR detection) |
+| `issue-number` | No | - | Issue number(s) to test, comma-separated (e.g., `123` or `123, 456`) |
+| `issue-filter` | No | - | Filter query for dynamic issue selection (see [Issue Filtering](#issue-filtering)) |
+| `max-issues` | No | `10` | Maximum issues to process in filter mode |
 | `test-url` | No | - | Base test URL (AI will append paths from issues) |
 | `qa-label` | No | `qa-test` | Label that marks issues for testing |
 | `auto-detect` | No | `true` | Let AI evaluate unlabeled issues for testability |
@@ -49,6 +70,7 @@ jobs:
 | `reopen-on-failure` | No | `true` | Reopen issue if test fails |
 | `failure-label` | No | `qa-failed` | Label to add when test fails |
 | `remove-failure-label-on-success` | No | `true` | Remove failure label on pass |
+| `test-merges` | No | `true` | Test merge commits with no linked issues (requires test-url) |
 | `api-url` | No | `https://runhuman.com` | Runhuman API base URL |
 
 ## Outputs
@@ -98,20 +120,67 @@ The pattern must have a capture group `(\d+)` for the issue number.
 
 ## Issue Filtering
 
-### How `auto-detect` Works
+Use `issue-filter` to dynamically query issues from your repository.
+
+### Filter Syntax
+
+Filters are space-separated and combined with AND logic:
+
+```yaml
+issue-filter: 'state:open stale:30d unassigned'
+```
+
+| Filter | Syntax | Description |
+|--------|--------|-------------|
+| state | `state:open`, `state:closed`, `state:all` | Issue state (default: open) |
+| age | `age:>30d` | Created more than X days ago |
+| stale | `stale:30d` | No activity in X days |
+| unassigned | `unassigned` | No assignee |
+| assigned | `assigned:username` | Assigned to specific user |
+| label | `label:bug`, `label:bug,enhancement` | Has specific label(s) |
+| all | `all` | Shorthand for `state:open` |
+
+### Filter Examples
+
+**Stale unassigned issues:**
+```yaml
+- uses: runhuman/issue-tester-action@v1
+  with:
+    api-key: ${{ secrets.RUNHUMAN_API_KEY }}
+    issue-filter: 'state:open stale:30d unassigned'
+    max-issues: '5'
+    test-url: ${{ vars.STAGING_URL }}
+```
+
+**Old issues with specific labels:**
+```yaml
+- uses: runhuman/issue-tester-action@v1
+  with:
+    api-key: ${{ secrets.RUNHUMAN_API_KEY }}
+    issue-filter: 'state:open age:>60d label:bug,needs-testing'
+    test-url: ${{ vars.STAGING_URL }}
+```
+
+**Issues assigned to a user:**
+```yaml
+- uses: runhuman/issue-tester-action@v1
+  with:
+    api-key: ${{ secrets.RUNHUMAN_API_KEY }}
+    issue-filter: 'state:open assigned:octocat'
+    test-url: ${{ vars.STAGING_URL }}
+```
+
+### Auto-Detect Mode
+
+When using auto mode (no `issue-number` or `issue-filter`), the `auto-detect` and `qa-label` inputs control which linked issues are tested:
 
 **With `auto-detect: true` (default):**
 - Issues with `qa-label` → sent to AI for testability check
 - Issues without `qa-label` → also sent to AI for testability check
-- AI determines if each issue can be tested by a human (UI bugs yes, code refactoring no)
 
 **With `auto-detect: false`:**
 - Issues with `qa-label` → sent to AI for testability check
 - Issues without `qa-label` → skipped immediately
-
-In both modes, AI still evaluates whether an issue is actually testable (has a URL, describes something a human can verify, etc.).
-
-### Label-Only Mode
 
 To only test explicitly labeled issues:
 
@@ -177,6 +246,44 @@ jobs:
           api-key: ${{ secrets.RUNHUMAN_API_KEY }}
           issue-number: ${{ inputs.issue-number }}
           test-url: ${{ inputs.test-url }}
+```
+
+## Merge Testing (No Linked Issues)
+
+When a PR is merged without any linked issues, the action can still run tests if `test-merges` is enabled (default: `true`) and a `test-url` is provided.
+
+### How It Works
+
+1. Action detects no linked issues from the merge
+2. Analyzes the merge diff to understand what changed
+3. AI determines if changes are human-testable
+4. Runs test on the provided `test-url`
+5. Posts summary to the workflow
+
+### When to Use
+
+This is useful for:
+- Hotfixes pushed directly without an issue
+- Small changes that don't warrant an issue
+- Emergency fixes that bypass normal workflow
+
+### Configuration
+
+```yaml
+- uses: runhuman/issue-tester-action@v1
+  with:
+    api-key: ${{ secrets.RUNHUMAN_API_KEY }}
+    test-url: ${{ vars.STAGING_URL }}  # Required for merge testing
+    test-merges: 'true'                 # Default, can be disabled
+```
+
+To disable merge testing:
+
+```yaml
+- uses: runhuman/issue-tester-action@v1
+  with:
+    api-key: ${{ secrets.RUNHUMAN_API_KEY }}
+    test-merges: 'false'
 ```
 
 ## What Makes an Issue Testable
@@ -319,6 +426,29 @@ https://
 ## Pricing
 
 Tests are billed at **$0.0018/second** (~$0.32-0.54 for a typical 3-5 minute test).
+
+## Technical Details
+
+### Job Polling
+
+The action polls for job completion every 60 seconds until the job reaches a terminal state:
+- `completed` - Test finished successfully
+- `error` - Test encountered an error
+- `abandoned` - Tester abandoned the test
+- `incomplete` - Test did not finish
+
+### Content Limits
+
+To optimize API calls, the action truncates long content:
+
+| Content Type | Character Limit |
+|--------------|-----------------|
+| Issue body | 2,000 |
+| PR body | 1,500 |
+| PR comments | 500 each |
+| Max comments | 10 |
+
+Full content is still available on GitHub; truncation only affects what's sent to the AI for analysis.
 
 ## Troubleshooting
 

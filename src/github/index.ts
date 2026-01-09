@@ -9,3 +9,9 @@ export {
   ensureIssueClosed,
 } from './issue-manager';
 export { isMergeCommit, getMergeData } from './merge-detection';
+export {
+  parseIssueFilter,
+  queryIssuesWithFilter,
+  getIssuesByNumbers,
+  type IssueFilterOptions,
+} from './issue-filter';

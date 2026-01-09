@@ -30161,7 +30161,6 @@ const core = __importStar(__nccwpck_require__(7184));
 const TERMINAL_STATES = ['completed', 'error', 'abandoned', 'incomplete'];
 // Polling configuration
 const POLL_INTERVAL_MS = 60000; // 1 minute between polls
-const MAX_POLL_DURATION_MS = 20 * 60 * 1000; // 20 minutes max
 /**
  * Create a QA test job via the async API
  */
@@ -30246,15 +30245,9 @@ async function getJobStatus(apiKey, apiUrl, jobId) {
  */
 async function pollForCompletion(apiKey, apiUrl, jobId) {
     const startTime = Date.now();
-    let lastStatus = '';
     while (true) {
         const elapsed = Date.now() - startTime;
-        if (elapsed > MAX_POLL_DURATION_MS) {
-            throw new Error(`Job ${jobId} did not complete within 20 minutes. ` +
-                `Last status: ${lastStatus}. The job may still be running - check the Runhuman dashboard.`);
-        }
         const status = await getJobStatus(apiKey, apiUrl, jobId);
-        lastStatus = status.status;
         // Log status changes
         core.info(`Job ${jobId} status: ${status.status} (${Math.round(elapsed / 1000)}s elapsed)`);
         if (TERMINAL_STATES.includes(status.status)) {
@@ -30363,7 +30356,7 @@ async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes, issue,
         githubRepo,
     });
     // Step 2: Poll for completion
-    core.info(`Waiting for job ${jobId} to complete (max 20 minutes)...`);
+    core.info(`Waiting for job ${jobId} to complete...`);
     const finalStatus = await pollForCompletion(apiKey, apiUrl, jobId);
     // Step 3: Convert to QATestResponse format
     const response = {
@@ -30420,7 +30413,7 @@ async function runMergeTest(apiKey, apiUrl, analysis, testUrl, targetDurationMin
         githubRepo,
     });
     // Step 2: Poll for completion
-    core.info(`Waiting for job ${jobId} to complete (max 20 minutes)...`);
+    core.info(`Waiting for job ${jobId} to complete...`);
     const finalStatus = await pollForCompletion(apiKey, apiUrl, jobId);
     // Step 3: Convert to QATestResponse format
     const response = {
@@ -30511,6 +30504,261 @@ async function postTestResultComment(githubToken, issueNumber, testResult, analy
     core.info(`Posted test result comment to issue #${issueNumber}`);
 }
 //# sourceMappingURL=issue-commenter.js.map
+
+/***/ }),
+
+/***/ 5447:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.parseIssueFilter = parseIssueFilter;
+exports.queryIssuesWithFilter = queryIssuesWithFilter;
+exports.getIssuesByNumbers = getIssuesByNumbers;
+const github = __importStar(__nccwpck_require__(5683));
+const core = __importStar(__nccwpck_require__(7184));
+/**
+ * Parse a filter query string into IssueFilterOptions
+ *
+ * Supported syntax:
+ * - state:open, state:closed, state:all
+ * - age:>30d (created more than 30 days ago)
+ * - stale:30d (no activity in 30 days)
+ * - unassigned
+ * - assigned:username
+ * - label:bug or label:bug,enhancement
+ * - all (shorthand for state:open)
+ *
+ * @example parseIssueFilter('state:open age:>30d unassigned')
+ * @example parseIssueFilter('state:open stale:7d label:bug,needs-testing')
+ */
+function parseIssueFilter(filter) {
+    const options = {
+        state: 'open', // Default to open issues
+    };
+    const tokens = filter.trim().split(/\s+/);
+    for (const token of tokens) {
+        const lowerToken = token.toLowerCase();
+        // Handle 'all' shorthand
+        if (lowerToken === 'all') {
+            options.state = 'open';
+            continue;
+        }
+        // Handle 'unassigned' flag
+        if (lowerToken === 'unassigned') {
+            options.unassigned = true;
+            continue;
+        }
+        // Handle key:value pairs
+        const colonIndex = token.indexOf(':');
+        if (colonIndex === -1) {
+            core.warning(`Unknown filter token: ${token}`);
+            continue;
+        }
+        const key = token.substring(0, colonIndex).toLowerCase();
+        const value = token.substring(colonIndex + 1);
+        switch (key) {
+            case 'state':
+                if (value === 'open' || value === 'closed' || value === 'all') {
+                    options.state = value;
+                }
+                else {
+                    throw new Error(`Invalid state value: ${value}. Must be 'open', 'closed', or 'all'`);
+                }
+                break;
+            case 'age':
+                options.ageGreaterThanDays = parseDays(value, 'age');
+                break;
+            case 'stale':
+                options.staleDays = parseDays(value, 'stale');
+                break;
+            case 'assigned':
+                options.assignee = value;
+                break;
+            case 'label':
+                options.labels = value.split(',').map(l => l.trim()).filter(Boolean);
+                break;
+            default:
+                core.warning(`Unknown filter key: ${key}`);
+        }
+    }
+    return options;
+}
+/**
+ * Parse a days value like '>30d' or '7d' into a number
+ */
+function parseDays(value, filterName) {
+    // Remove leading '>' if present
+    const normalized = value.startsWith('>') ? value.substring(1) : value;
+    // Remove trailing 'd' if present
+    const numStr = normalized.endsWith('d') ? normalized.slice(0, -1) : normalized;
+    const days = parseInt(numStr, 10);
+    if (isNaN(days) || days < 0) {
+        throw new Error(`Invalid ${filterName} value: ${value}. Expected format like '30d' or '>30d'`);
+    }
+    return days;
+}
+/**
+ * Query GitHub issues with filters
+ */
+async function queryIssuesWithFilter(githubToken, options, maxIssues) {
+    const octokit = github.getOctokit(githubToken);
+    const { owner, repo } = github.context.repo;
+    core.info(`Querying issues with filter: ${JSON.stringify(options)}`);
+    // Build query parameters for GitHub REST API
+    const queryParams = {
+        owner,
+        repo,
+        state: options.state,
+        per_page: Math.min(maxIssues, 100), // GitHub max is 100 per page
+        sort: 'updated',
+        direction: 'desc',
+    };
+    // Add assignee filter
+    if (options.unassigned) {
+        queryParams.assignee = 'none';
+    }
+    else if (options.assignee) {
+        queryParams.assignee = options.assignee;
+    }
+    // Add labels filter (comma-separated)
+    if (options.labels && options.labels.length > 0) {
+        queryParams.labels = options.labels.join(',');
+    }
+    // Calculate date cutoffs for age/stale filters
+    const now = new Date();
+    let createdBefore;
+    let updatedBefore;
+    if (options.ageGreaterThanDays !== undefined) {
+        createdBefore = new Date(now.getTime() - options.ageGreaterThanDays * 24 * 60 * 60 * 1000);
+    }
+    if (options.staleDays !== undefined) {
+        updatedBefore = new Date(now.getTime() - options.staleDays * 24 * 60 * 60 * 1000);
+    }
+    // Fetch issues (may need multiple pages if maxIssues > 100)
+    const allIssues = [];
+    let page = 1;
+    while (allIssues.length < maxIssues) {
+        const { data: issues } = await octokit.rest.issues.listForRepo({
+            ...queryParams,
+            page,
+        });
+        if (issues.length === 0)
+            break;
+        for (const issue of issues) {
+            // Skip pull requests (GitHub API includes PRs in issues endpoint)
+            if (issue.pull_request)
+                continue;
+            // Apply date filters (GitHub API doesn't support 'created before')
+            if (createdBefore) {
+                const createdAt = new Date(issue.created_at);
+                if (createdAt >= createdBefore)
+                    continue;
+            }
+            if (updatedBefore) {
+                const updatedAt = new Date(issue.updated_at);
+                if (updatedAt >= updatedBefore)
+                    continue;
+            }
+            const linkedIssue = {
+                number: issue.number,
+                title: issue.title,
+                body: issue.body ?? '',
+                state: issue.state === 'open' ? 'OPEN' : 'CLOSED',
+                labels: issue.labels
+                    .filter((l) => typeof l === 'object' && l !== null && 'name' in l)
+                    .map((l) => ({ name: l.name })),
+            };
+            allIssues.push(linkedIssue);
+            if (allIssues.length >= maxIssues)
+                break;
+        }
+        // If we got fewer than requested, no more pages
+        if (issues.length < queryParams.per_page)
+            break;
+        page++;
+    }
+    core.info(`Found ${allIssues.length} issues matching filter`);
+    return allIssues;
+}
+/**
+ * Get multiple issues by their numbers
+ */
+async function getIssuesByNumbers(githubToken, issueNumbers) {
+    const octokit = github.getOctokit(githubToken);
+    const { owner, repo } = github.context.repo;
+    core.info(`Fetching ${issueNumbers.length} issues: ${issueNumbers.map(n => `#${n}`).join(', ')}`);
+    const issues = [];
+    for (const issueNumber of issueNumbers) {
+        try {
+            const { data: issue } = await octokit.rest.issues.get({
+                owner,
+                repo,
+                issue_number: issueNumber,
+            });
+            // Skip pull requests
+            if (issue.pull_request) {
+                core.warning(`#${issueNumber} is a pull request, skipping`);
+                continue;
+            }
+            const linkedIssue = {
+                number: issue.number,
+                title: issue.title,
+                body: issue.body ?? '',
+                state: issue.state === 'open' ? 'OPEN' : 'CLOSED',
+                labels: issue.labels
+                    .filter((l) => typeof l === 'object' && l !== null && 'name' in l)
+                    .map((l) => ({ name: l.name })),
+            };
+            issues.push(linkedIssue);
+            core.info(`Found issue #${issueNumber}: ${linkedIssue.title}`);
+        }
+        catch (error) {
+            if (error instanceof Error && 'status' in error && error.status === 404) {
+                core.warning(`Issue #${issueNumber} not found, skipping`);
+            }
+            else {
+                throw error;
+            }
+        }
+    }
+    return issues;
+}
+//# sourceMappingURL=issue-filter.js.map
 
 /***/ }),
 
@@ -31210,6 +31458,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.parseInputs = parseInputs;
 const core = __importStar(__nccwpck_require__(7184));
 const github = __importStar(__nccwpck_require__(5683));
+const issue_filter_1 = __nccwpck_require__(5447);
 /**
  * Parse and validate action inputs
  */
@@ -31224,6 +31473,8 @@ function parseInputs() {
     const failureLabel = core.getInput('failure-label') || 'qa-failed';
     const removeFailureLabelOnSuccess = core.getInput('remove-failure-label-on-success') !== 'false';
     const issueNumberStr = core.getInput('issue-number');
+    const issueFilterStr = core.getInput('issue-filter');
+    const maxIssuesStr = core.getInput('max-issues') || '10';
     const testUrlStr = core.getInput('test-url');
     const issuePatternStr = core.getInput('issue-pattern');
     const testMerges = core.getInput('test-merges') !== 'false';
@@ -31237,13 +31488,19 @@ function parseInputs() {
     if (isNaN(targetDurationMinutes) || targetDurationMinutes < 1 || targetDurationMinutes > 60) {
         throw new Error('target-duration-minutes must be a number between 1 and 60');
     }
-    // Parse and validate issue number (optional)
-    let issueNumber = null;
-    if (issueNumberStr) {
-        issueNumber = parseInt(issueNumberStr, 10);
-        if (isNaN(issueNumber) || issueNumber < 1) {
-            throw new Error('issue-number must be a positive integer');
-        }
+    // Parse and validate issue numbers (comma-separated, optional)
+    const issueNumbers = parseIssueNumbers(issueNumberStr);
+    // Parse and validate issue filter (optional)
+    let issueFilter = null;
+    if (issueFilterStr) {
+        // Validate by attempting to parse
+        (0, issue_filter_1.parseIssueFilter)(issueFilterStr);
+        issueFilter = issueFilterStr;
+    }
+    // Parse and validate max issues
+    const maxIssues = parseInt(maxIssuesStr, 10);
+    if (isNaN(maxIssues) || maxIssues < 1) {
+        throw new Error('max-issues must be a positive integer');
     }
     // Parse and validate test URL (optional)
     let testUrl = null;
@@ -31277,12 +31534,37 @@ function parseInputs() {
         reopenOnFailure,
         failureLabel,
         removeFailureLabelOnSuccess,
-        issueNumber,
+        issueNumbers,
+        issueFilter,
+        maxIssues,
         testUrl,
         issuePattern,
         githubRepo,
         testMerges,
     };
+}
+/**
+ * Parse comma-separated issue numbers
+ * @example '123' → [123]
+ * @example '123, 456, 789' → [123, 456, 789]
+ */
+function parseIssueNumbers(input) {
+    if (!input || !input.trim()) {
+        return [];
+    }
+    const numbers = [];
+    const parts = input.split(',');
+    for (const part of parts) {
+        const trimmed = part.trim();
+        if (!trimmed)
+            continue;
+        const num = parseInt(trimmed, 10);
+        if (isNaN(num) || num < 1) {
+            throw new Error(`Invalid issue number: "${trimmed}". Must be a positive integer.`);
+        }
+        numbers.push(num);
+    }
+    return numbers;
 }
 /**
  * Validate that a string is a valid HTTP/HTTPS URL
@@ -31347,6 +31629,7 @@ const merge_detection_1 = __nccwpck_require__(2217);
 const pr_context_1 = __nccwpck_require__(715);
 const issue_commenter_1 = __nccwpck_require__(2143);
 const issue_manager_1 = __nccwpck_require__(7638);
+const issue_filter_1 = __nccwpck_require__(5447);
 const analyze_issue_1 = __nccwpck_require__(4174);
 const analyze_merge_1 = __nccwpck_require__(8417);
 const run_test_1 = __nccwpck_require__(4338);
@@ -31368,16 +31651,29 @@ async function run() {
         core.debug('Inputs parsed successfully');
         let issuesToProcess;
         let prContext = null;
-        // 2. Determine mode: manual (issue-number) or PR merge
-        if (inputs.issueNumber !== null) {
-            // Manual mode: test specific issue (no PR context available)
-            core.info(`Manual mode: Testing issue #${inputs.issueNumber}`);
-            const issue = await (0, linked_issues_1.getIssueByNumber)(inputs.githubToken, inputs.issueNumber);
-            if (!issue) {
-                core.setFailed(`Issue #${inputs.issueNumber} not found or is a pull request`);
+        // 2. Determine mode: manual (issue-number), filter (issue-filter), or auto (PR merge)
+        if (inputs.issueNumbers.length > 0) {
+            // Manual mode: test specific issue(s) (no PR context available)
+            core.info(`Manual mode: Testing ${inputs.issueNumbers.length} issue(s): ${inputs.issueNumbers.map(n => `#${n}`).join(', ')}`);
+            const issues = await (0, issue_filter_1.getIssuesByNumbers)(inputs.githubToken, inputs.issueNumbers);
+            if (issues.length === 0) {
+                core.setFailed(`No valid issues found from: ${inputs.issueNumbers.map(n => `#${n}`).join(', ')}`);
                 return;
             }
-            issuesToProcess = [issue];
+            issuesToProcess = issues;
+        }
+        else if (inputs.issueFilter) {
+            // Filter mode: query issues dynamically
+            core.info(`Filter mode: Querying issues with filter "${inputs.issueFilter}" (max: ${inputs.maxIssues})`);
+            const filterOptions = (0, issue_filter_1.parseIssueFilter)(inputs.issueFilter);
+            const issues = await (0, issue_filter_1.queryIssuesWithFilter)(inputs.githubToken, filterOptions, inputs.maxIssues);
+            if (issues.length === 0) {
+                core.info('No issues matched the filter criteria');
+                setOutputs(results);
+                return;
+            }
+            core.info(`Found ${issues.length} issue(s) matching filter`);
+            issuesToProcess = issues;
         }
         else {
             // PR merge mode: get linked issues from merged PR

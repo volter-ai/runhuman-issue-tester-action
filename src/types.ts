@@ -27,8 +27,12 @@ export interface ParsedInputs {
   reopenOnFailure: boolean;
   failureLabel: string;
   removeFailureLabelOnSuccess: boolean;
-  /** Specific issue number for manual testing (null = use PR linked issues flow) */
-  issueNumber: number | null;
+  /** Specific issue number(s) for manual testing (empty = use filter or PR linked issues flow) */
+  issueNumbers: number[];
+  /** Filter query string for dynamic issue selection (null = use manual or PR linked issues flow) */
+  issueFilter: string | null;
+  /** Maximum number of issues to process when using filter mode */
+  maxIssues: number;
   /** Manual test URL override (null = use AI-detected URL from issue) */
   testUrl: string | null;
   /** Custom regex pattern for detecting issue numbers in commit messages */

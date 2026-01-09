@@ -1,6 +1,7 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import type { ParsedInputs } from './types';
+import { parseIssueFilter } from './github/issue-filter';
 
 /**
  * Parse and validate action inputs
@@ -16,6 +17,8 @@ export function parseInputs(): ParsedInputs {
   const failureLabel = core.getInput('failure-label') || 'qa-failed';
   const removeFailureLabelOnSuccess = core.getInput('remove-failure-label-on-success') !== 'false';
   const issueNumberStr = core.getInput('issue-number');
+  const issueFilterStr = core.getInput('issue-filter');
+  const maxIssuesStr = core.getInput('max-issues') || '10';
   const testUrlStr = core.getInput('test-url');
   const issuePatternStr = core.getInput('issue-pattern');
   const testMerges = core.getInput('test-merges') !== 'false';
@@ -34,13 +37,21 @@ export function parseInputs(): ParsedInputs {
     throw new Error('target-duration-minutes must be a number between 1 and 60');
   }
 
-  // Parse and validate issue number (optional)
-  let issueNumber: number | null = null;
-  if (issueNumberStr) {
-    issueNumber = parseInt(issueNumberStr, 10);
-    if (isNaN(issueNumber) || issueNumber < 1) {
-      throw new Error('issue-number must be a positive integer');
-    }
+  // Parse and validate issue numbers (comma-separated, optional)
+  const issueNumbers = parseIssueNumbers(issueNumberStr);
+
+  // Parse and validate issue filter (optional)
+  let issueFilter: string | null = null;
+  if (issueFilterStr) {
+    // Validate by attempting to parse
+    parseIssueFilter(issueFilterStr);
+    issueFilter = issueFilterStr;
+  }
+
+  // Parse and validate max issues
+  const maxIssues = parseInt(maxIssuesStr, 10);
+  if (isNaN(maxIssues) || maxIssues < 1) {
+    throw new Error('max-issues must be a positive integer');
   }
 
   // Parse and validate test URL (optional)
@@ -77,12 +88,41 @@ export function parseInputs(): ParsedInputs {
     reopenOnFailure,
     failureLabel,
     removeFailureLabelOnSuccess,
-    issueNumber,
+    issueNumbers,
+    issueFilter,
+    maxIssues,
     testUrl,
     issuePattern,
     githubRepo,
     testMerges,
   };
+}
+
+/**
+ * Parse comma-separated issue numbers
+ * @example '123' → [123]
+ * @example '123, 456, 789' → [123, 456, 789]
+ */
+function parseIssueNumbers(input: string): number[] {
+  if (!input || !input.trim()) {
+    return [];
+  }
+
+  const numbers: number[] = [];
+  const parts = input.split(',');
+
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+
+    const num = parseInt(trimmed, 10);
+    if (isNaN(num) || num < 1) {
+      throw new Error(`Invalid issue number: "${trimmed}". Must be a positive integer.`);
+    }
+    numbers.push(num);
+  }
+
+  return numbers;
 }
 
 /**
