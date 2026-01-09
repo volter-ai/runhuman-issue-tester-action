@@ -32,6 +32,7 @@ interface JobStatusResponse {
   testerAlias?: string;
   testerAvatarUrl?: string;
   testerColor?: string;
+  jobUrl?: string;
 }
 
 // Terminal states that indicate the job is done
@@ -304,6 +305,9 @@ export async function runQATest(
     testDurationSeconds: finalStatus.testDurationSeconds,
     jobId: finalStatus.id,
     testerData: finalStatus.testerData as PlaywrightData | undefined,
+    testerAlias: finalStatus.testerAlias,
+    testerAvatarUrl: finalStatus.testerAvatarUrl,
+    jobUrl: finalStatus.jobUrl,
   };
 
   if (finalStatus.status === 'completed') {
@@ -378,6 +382,9 @@ export async function runMergeTest(
     testDurationSeconds: finalStatus.testDurationSeconds,
     jobId: finalStatus.id,
     testerData: finalStatus.testerData as PlaywrightData | undefined,
+    testerAlias: finalStatus.testerAlias,
+    testerAvatarUrl: finalStatus.testerAvatarUrl,
+    jobUrl: finalStatus.jobUrl,
   };
 
   if (finalStatus.status === 'completed') {
