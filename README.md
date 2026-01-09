@@ -138,6 +138,9 @@ issue-filter: 'state:open stale:30d unassigned'
 | unassigned | `unassigned` | No assignee |
 | assigned | `assigned:username` | Assigned to specific user |
 | label | `label:bug`, `label:bug,enhancement` | Has specific label(s) |
+| no-media | `no-media` | Missing both screenshots and videos |
+| no-screenshots | `no-screenshots` | Missing screenshots/images |
+| no-video | `no-video` | Missing videos |
 | all | `all` | Shorthand for `state:open` |
 
 ### Filter Examples
@@ -167,6 +170,15 @@ issue-filter: 'state:open stale:30d unassigned'
   with:
     api-key: ${{ secrets.RUNHUMAN_API_KEY }}
     issue-filter: 'state:open assigned:octocat'
+    test-url: ${{ vars.STAGING_URL }}
+```
+
+**Bug reports missing reproduction media:**
+```yaml
+- uses: runhuman/issue-tester-action@v1
+  with:
+    api-key: ${{ secrets.RUNHUMAN_API_KEY }}
+    issue-filter: 'state:open label:bug no-media'
     test-url: ${{ vars.STAGING_URL }}
 ```
 

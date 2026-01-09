@@ -12,6 +12,9 @@ export interface IssueFilterOptions {
   unassigned?: boolean;
   assignee?: string;
   labels?: string[];
+  noMedia?: boolean;
+  noScreenshots?: boolean;
+  noVideo?: boolean;
 }
 
 /**
@@ -48,6 +51,22 @@ export function parseIssueFilter(filter: string): IssueFilterOptions {
     // Handle 'unassigned' flag
     if (lowerToken === 'unassigned') {
       options.unassigned = true;
+      continue;
+    }
+
+    // Handle media filter flags
+    if (lowerToken === 'no-media') {
+      options.noMedia = true;
+      continue;
+    }
+
+    if (lowerToken === 'no-screenshots') {
+      options.noScreenshots = true;
+      continue;
+    }
+
+    if (lowerToken === 'no-video') {
+      options.noVideo = true;
       continue;
     }
 
@@ -110,6 +129,52 @@ function parseDays(value: string, filterName: string): number {
   }
 
   return days;
+}
+
+/**
+ * Check if issue body contains images/screenshots
+ */
+function hasScreenshots(body: string): boolean {
+  if (!body) return false;
+
+  // Markdown images: ![alt](url)
+  const markdownImage = /!\[.*?\]\(.*?\)/;
+  // HTML img tags
+  const htmlImg = /<img\s/i;
+  // GitHub user images
+  const githubUserImages = /https:\/\/user-images\.githubusercontent\.com/;
+  // GitHub assets (images)
+  const githubAssets = /https:\/\/github\.com\/.*?\/assets\//;
+
+  return (
+    markdownImage.test(body) ||
+    htmlImg.test(body) ||
+    githubUserImages.test(body) ||
+    githubAssets.test(body)
+  );
+}
+
+/**
+ * Check if issue body contains videos
+ */
+function hasVideos(body: string): boolean {
+  if (!body) return false;
+
+  // HTML video tags
+  const videoTag = /<video\s/i;
+  // Video file extensions in URLs (with common URL terminators)
+  const videoUrl = /https?:\/\/[^\s"'<>]+\.(mp4|mov|webm|gif)(?:[\s"'<>)]|$)/i;
+  // GitHub video uploads
+  const githubVideo = /https:\/\/github\.com\/.*?\/assets\/.*?\.(mp4|mov|webm)/i;
+
+  return videoTag.test(body) || videoUrl.test(body) || githubVideo.test(body);
+}
+
+/**
+ * Check if issue body contains any media (screenshots or videos)
+ */
+function hasMedia(body: string): boolean {
+  return hasScreenshots(body) || hasVideos(body);
 }
 
 /**
@@ -186,6 +251,12 @@ export async function queryIssuesWithFilter(
         const updatedAt = new Date(issue.updated_at);
         if (updatedAt >= updatedBefore) continue;
       }
+
+      // Apply media filters (client-side, body inspection)
+      const issueBody = issue.body ?? '';
+      if (options.noMedia && hasMedia(issueBody)) continue;
+      if (options.noScreenshots && hasScreenshots(issueBody)) continue;
+      if (options.noVideo && hasVideos(issueBody)) continue;
 
       const linkedIssue: LinkedIssue = {
         number: issue.number,

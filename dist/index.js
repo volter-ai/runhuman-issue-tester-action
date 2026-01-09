@@ -30367,6 +30367,9 @@ async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes, issue,
         testDurationSeconds: finalStatus.testDurationSeconds,
         jobId: finalStatus.id,
         testerData: finalStatus.testerData,
+        testerAlias: finalStatus.testerAlias,
+        testerAvatarUrl: finalStatus.testerAvatarUrl,
+        jobUrl: finalStatus.jobUrl,
     };
     if (finalStatus.status === 'completed') {
         core.info(`Job ${jobId} completed successfully`);
@@ -30424,6 +30427,9 @@ async function runMergeTest(apiKey, apiUrl, analysis, testUrl, targetDurationMin
         testDurationSeconds: finalStatus.testDurationSeconds,
         jobId: finalStatus.id,
         testerData: finalStatus.testerData,
+        testerAlias: finalStatus.testerAlias,
+        testerAvatarUrl: finalStatus.testerAvatarUrl,
+        jobUrl: finalStatus.jobUrl,
     };
     if (finalStatus.status === 'completed') {
         core.info(`Job ${jobId} completed successfully`);
@@ -30487,14 +30493,20 @@ exports.postTestResultComment = postTestResultComment;
 const github = __importStar(__nccwpck_require__(5683));
 const core = __importStar(__nccwpck_require__(7184));
 const shared_1 = __nccwpck_require__(779);
+/** Job statuses that indicate the job failed (not just the test) */
+const FAILED_JOB_STATUSES = ['abandoned', 'error', 'incomplete'];
 /**
  * Post a test result comment to a GitHub issue
  */
 async function postTestResultComment(githubToken, issueNumber, testResult, analysis) {
     const octokit = github.getOctokit(githubToken);
     const { owner, repo } = github.context.repo;
-    const comment = (0, shared_1.buildTestResultComment)(testResult, analysis);
-    core.debug(`Posting comment to issue #${issueNumber}`);
+    // Choose the appropriate template based on job status
+    const isJobFailed = FAILED_JOB_STATUSES.includes(testResult.status);
+    const comment = isJobFailed
+        ? (0, shared_1.buildJobFailedComment)(testResult, analysis)
+        : (0, shared_1.buildTestResultComment)(testResult, analysis);
+    core.debug(`Posting comment to issue #${issueNumber} (job status: ${testResult.status})`);
     await octokit.rest.issues.createComment({
         owner,
         repo,
@@ -30583,6 +30595,19 @@ function parseIssueFilter(filter) {
             options.unassigned = true;
             continue;
         }
+        // Handle media filter flags
+        if (lowerToken === 'no-media') {
+            options.noMedia = true;
+            continue;
+        }
+        if (lowerToken === 'no-screenshots') {
+            options.noScreenshots = true;
+            continue;
+        }
+        if (lowerToken === 'no-video') {
+            options.noVideo = true;
+            continue;
+        }
         // Handle key:value pairs
         const colonIndex = token.indexOf(':');
         if (colonIndex === -1) {
@@ -30631,6 +30656,45 @@ function parseDays(value, filterName) {
         throw new Error(`Invalid ${filterName} value: ${value}. Expected format like '30d' or '>30d'`);
     }
     return days;
+}
+/**
+ * Check if issue body contains images/screenshots
+ */
+function hasScreenshots(body) {
+    if (!body)
+        return false;
+    // Markdown images: ![alt](url)
+    const markdownImage = /!\[.*?\]\(.*?\)/;
+    // HTML img tags
+    const htmlImg = /<img\s/i;
+    // GitHub user images
+    const githubUserImages = /https:\/\/user-images\.githubusercontent\.com/;
+    // GitHub assets (images)
+    const githubAssets = /https:\/\/github\.com\/.*?\/assets\//;
+    return (markdownImage.test(body) ||
+        htmlImg.test(body) ||
+        githubUserImages.test(body) ||
+        githubAssets.test(body));
+}
+/**
+ * Check if issue body contains videos
+ */
+function hasVideos(body) {
+    if (!body)
+        return false;
+    // HTML video tags
+    const videoTag = /<video\s/i;
+    // Video file extensions in URLs (with common URL terminators)
+    const videoUrl = /https?:\/\/[^\s"'<>]+\.(mp4|mov|webm|gif)(?:[\s"'<>)]|$)/i;
+    // GitHub video uploads
+    const githubVideo = /https:\/\/github\.com\/.*?\/assets\/.*?\.(mp4|mov|webm)/i;
+    return videoTag.test(body) || videoUrl.test(body) || githubVideo.test(body);
+}
+/**
+ * Check if issue body contains any media (screenshots or videos)
+ */
+function hasMedia(body) {
+    return hasScreenshots(body) || hasVideos(body);
 }
 /**
  * Query GitHub issues with filters
@@ -30694,6 +30758,14 @@ async function queryIssuesWithFilter(githubToken, options, maxIssues) {
                 if (updatedAt >= updatedBefore)
                     continue;
             }
+            // Apply media filters (client-side, body inspection)
+            const issueBody = issue.body ?? '';
+            if (options.noMedia && hasMedia(issueBody))
+                continue;
+            if (options.noScreenshots && hasScreenshots(issueBody))
+                continue;
+            if (options.noVideo && hasVideos(issueBody))
+                continue;
             const linkedIssue = {
                 number: issue.number,
                 title: issue.title,
@@ -33962,6 +34034,7 @@ __nccwpck_require__.d(__webpack_exports__, {
   JOB_STATUS: () => (/* reexport */ JOB_STATUS),
   PAGINATION_DEFAULTS: () => (/* reexport */ PAGINATION_DEFAULTS),
   apiRoutes: () => (/* reexport */ apiRoutes),
+  buildJobFailedComment: () => (/* reexport */ buildJobFailedComment),
   buildTestResultComment: () => (/* reexport */ buildTestResultComment),
   defineRoute: () => (/* reexport */ defineRoute),
   formatResultValue: () => (/* reexport */ formatResultValue),
@@ -34267,6 +34340,7 @@ const apiRoutes = {
 
 //# sourceMappingURL=index.js.map
 ;// CONCATENATED MODULE: ../shared/dist/issue-testing/comment-template.js
+const DEFAULT_MAX_SCREENSHOTS = 3;
 /**
  * Format a value for display in the results table
  */
@@ -34282,87 +34356,155 @@ function formatResultValue(value) {
     return String(value);
 }
 /**
+ * Build the tester info section with avatar and name
+ */
+function buildTesterSection(testResult) {
+    const { testerAlias, testerAvatarUrl } = testResult;
+    if (!testerAlias) {
+        return '';
+    }
+    if (testerAvatarUrl) {
+        return `**Tester:** <img src="${testerAvatarUrl}" width="20" height="20" style="border-radius: 50%; vertical-align: middle;" /> ${testerAlias}\n\n`;
+    }
+    return `**Tester:** ${testerAlias}\n\n`;
+}
+/**
+ * Build the media section with video and screenshots
+ */
+function buildMediaSection(testResult, maxScreenshots = DEFAULT_MAX_SCREENSHOTS) {
+    const { testerData, jobUrl } = testResult;
+    let section = '';
+    // Video link (comes first)
+    if (testerData?.videoUrl) {
+        section += `[Watch Recording](${testerData.videoUrl})`;
+    }
+    // Screenshots
+    const screenshots = testerData?.screenshots || [];
+    if (screenshots.length > 0) {
+        // Add separator if video exists
+        if (section) {
+            section += ' | ';
+        }
+        // Link to view all screenshots if there are more than max
+        if (screenshots.length > maxScreenshots && jobUrl) {
+            section += `[View all screenshots (${screenshots.length})](${jobUrl})`;
+        }
+        section += '\n\n';
+        // Embed limited screenshots
+        const displayCount = Math.min(screenshots.length, maxScreenshots);
+        for (let i = 0; i < displayCount; i++) {
+            section += `![Screenshot ${i + 1}](${screenshots[i]})\n\n`;
+        }
+        // Note about additional screenshots
+        if (screenshots.length > maxScreenshots && !jobUrl) {
+            const moreCount = screenshots.length - maxScreenshots;
+            section += `*+${moreCount} additional screenshots available*\n\n`;
+        }
+    }
+    else if (section) {
+        section += '\n\n';
+    }
+    return section;
+}
+/**
+ * Build the test results table
+ */
+function buildResultsTable(testResult) {
+    if (!testResult.result?.data || Object.keys(testResult.result.data).length === 0) {
+        return '';
+    }
+    let table = '| Field | Value |\n|-------|-------|\n';
+    for (const [key, value] of Object.entries(testResult.result.data)) {
+        const displayValue = formatResultValue(value);
+        table += `| ${key} | ${displayValue} |\n`;
+    }
+    table += '\n';
+    return table;
+}
+/**
  * Build a markdown comment for posting test results to a GitHub issue
+ * Used when job status is 'completed' (test ran successfully)
  */
 function buildTestResultComment(testResult, analysis) {
     const passed = testResult.result?.success ?? false;
-    const statusText = passed ? 'PASSED' : 'FAILED';
-    let comment = `## QA Test ${statusText}
+    const statusIcon = passed ? '✓' : '✗';
+    const statusText = passed ? 'Passed' : 'Failed';
+    let comment = `## QA Test ${statusIcon} ${statusText}
 
-**Tested URL:** ${analysis.testUrl || 'N/A'}
-**Duration:** ${testResult.testDurationSeconds ? `${testResult.testDurationSeconds}s` : 'N/A'}
-**Cost:** ${testResult.costUsd ? `$${testResult.costUsd.toFixed(4)}` : 'N/A'}
-**Confidence:** ${(analysis.confidence * 100).toFixed(0)}%
-
----
-
-### Test Instructions
-
+### Test Request
+**URL:** ${analysis.testUrl || 'N/A'}
+**Instructions:**
 > ${analysis.testInstructions}
 
----
-
-### Tester Findings
-
+### Test Results
+${buildTesterSection(testResult)}**Findings:**
 > ${testResult.result?.explanation || 'No explanation provided'}
 
-`;
-    // Add extracted data if available
-    if (testResult.result?.data && Object.keys(testResult.result.data).length > 0) {
-        comment += `
-### Test Results
+${buildResultsTable(testResult)}${buildMediaSection(testResult)}### Action Taken
+${passed ? 'Test passed. Issue confirmed as resolved.' : 'This issue has been reopened because the QA test failed.'}
 
-| Field | Value |
-|-------|-------|
-`;
-        for (const [key, value] of Object.entries(testResult.result.data)) {
-            const displayValue = formatResultValue(value);
-            comment += `| ${key} | ${displayValue} |\n`;
-        }
-        comment += '\n';
-    }
-    // Add screenshots if available
-    if (testResult.testerData?.screenshots && testResult.testerData.screenshots.length > 0) {
-        comment += `
-### Screenshots
-
-`;
-        for (let i = 0; i < testResult.testerData.screenshots.length; i++) {
-            comment += `![Screenshot ${i + 1}](${testResult.testerData.screenshots[i]})\n\n`;
-        }
-    }
-    // Add video link if available
-    if (testResult.testerData?.videoUrl) {
-        comment += `
-### Session Recording
-
-[View Video Recording](${testResult.testerData.videoUrl})
-
-`;
-    }
-    // Add action taken message
-    if (!passed) {
-        comment += `
 ---
-
-**Action Taken:** This issue has been reopened because the QA test failed.
-
 `;
+    // Footer with job link
+    if (testResult.jobUrl) {
+        comment += `[View full details](${testResult.jobUrl}) | `;
     }
-    else {
-        comment += `
----
-
-**Action Taken:** Test passed. Issue confirmed as resolved.
-
-`;
+    comment += `Powered by [Runhuman](https://runhuman.com)`;
+    return comment;
+}
+/**
+ * Get human-readable status description for failed jobs
+ */
+function getFailedJobStatusDescription(status, reason) {
+    switch (status) {
+        case 'abandoned':
+            return {
+                title: 'Abandoned',
+                description: reason || 'The tester was unable to complete the test.',
+            };
+        case 'error':
+            return {
+                title: 'Error',
+                description: reason || 'An error occurred while processing the test.',
+            };
+        case 'incomplete':
+            return {
+                title: 'Incomplete',
+                description: reason || 'The test could not be completed with the available information.',
+            };
+        default:
+            return {
+                title: 'Failed',
+                description: reason || 'The test job could not be completed.',
+            };
     }
-    // Footer
-    comment += `
----
+}
+/**
+ * Build a markdown comment for failed jobs (abandoned, error, incomplete)
+ * These are different from failed tests - the job itself didn't complete
+ */
+function buildJobFailedComment(testResult, analysis) {
+    const { title, description } = getFailedJobStatusDescription(testResult.status, testResult.error);
+    let comment = `## QA Test Could Not Be Completed
 
-<sub>Powered by [Runhuman](https://runhuman.com) - Human-powered QA testing</sub>
+### Test Request
+**URL:** ${analysis.testUrl || 'N/A'}
+**Instructions:**
+> ${analysis.testInstructions}
+
+### What Happened
+**Status:** ${title}
+**Reason:** ${description}
+
+This test was not successfully completed. The issue state has not been changed.
+
+---
 `;
+    // Footer with job link
+    if (testResult.jobUrl) {
+        comment += `[View details](${testResult.jobUrl}) | `;
+    }
+    comment += `Powered by [Runhuman](https://runhuman.com)`;
     return comment;
 }
 //# sourceMappingURL=comment-template.js.map
