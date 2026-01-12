@@ -281,7 +281,8 @@ async function processIssue(
       inputs.targetDurationMinutes,
       issue,
       prContext,
-      inputs.githubRepo
+      inputs.githubRepo,
+      inputs.screenSize
     );
     result.testResult = testResult;
     result.status = 'tested';
@@ -400,7 +401,8 @@ async function processMergeTest(
       inputs.testUrl!,
       inputs.targetDurationMinutes,
       prContext,
-      inputs.githubRepo
+      inputs.githubRepo,
+      inputs.screenSize
     );
     result.testResult = testResult;
     result.status = 'tested';

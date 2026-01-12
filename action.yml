@@ -70,6 +70,10 @@ inputs:
     description: 'Only test issues missing reproduction media (screenshots/videos). AI analyzes issue + comments.'
     required: false
     default: 'false'
+  screen-size:
+    description: 'Screen size for testing. Use preset (desktop, laptop, tablet, mobile) or custom JSON {"width": 1920, "height": 1080}'
+    required: false
+    default: 'desktop'
 
 outputs:
   tested-issues:

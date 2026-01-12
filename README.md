@@ -53,6 +53,28 @@ jobs:
           api-key: ${{ secrets.RUNHUMAN_API_KEY }}
 ```
 
+## Permissions
+
+The action requires `issues: write` permission to read, close, reopen, and label issues:
+
+```yaml
+jobs:
+  test-issues:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: runhuman/issue-tester-action@v1
+        with:
+          api-key: ${{ secrets.RUNHUMAN_API_KEY }}
+```
+
+**Why `write` instead of `read`?** The action needs to:
+- Read issues (filter mode, manual mode)
+- Close issues on test pass (`close-on-success`)
+- Reopen issues on test fail (`reopen-on-failure`)
+- Add/remove labels (`failure-label`, `remove-failure-label-on-success`)
+
 ## Inputs
 
 | Input | Required | Default | Description |
@@ -514,6 +536,19 @@ Ensure `RUNHUMAN_API_KEY` secret:
 - Starts with `qa_live_`
 - Is set in repository secrets
 - Has not expired
+
+### "Resource not accessible by integration" Error
+
+This error means the GitHub token lacks required permissions. Add to your workflow:
+
+```yaml
+jobs:
+  test-issues:
+    permissions:
+      issues: write
+```
+
+See [Permissions](#permissions) for details.
 
 ## Links
 

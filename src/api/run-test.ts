@@ -1,5 +1,5 @@
 import * as core from '@actions/core';
-import type { QATestResponse, AnalyzeIssueResponse, AnalyzeMergeResponse, LinkedIssue, PlaywrightData, PRContext, PRComment } from '../types';
+import type { QATestResponse, AnalyzeIssueResponse, AnalyzeMergeResponse, LinkedIssue, PlaywrightData, PRContext, PRComment, ScreenSizeConfig } from '../types';
 
 interface CreateJobRequest {
   url: string;
@@ -8,6 +8,7 @@ interface CreateJobRequest {
   targetDurationMinutes?: number;
   additionalValidationInstructions?: string;
   githubRepo?: string;
+  screenSize?: ScreenSizeConfig;
 }
 
 interface CreateJobResponse {
@@ -274,7 +275,8 @@ export async function runQATest(
   targetDurationMinutes: number,
   issue: LinkedIssue,
   prContext: PRContext | null,
-  githubRepo?: string
+  githubRepo?: string,
+  screenSize?: ScreenSizeConfig
 ): Promise<QATestResponse> {
   if (!analysis.testUrl) {
     throw new Error('No test URL provided in analysis');
@@ -290,6 +292,7 @@ export async function runQATest(
     targetDurationMinutes,
     additionalValidationInstructions: formatTestingContext(issue, prContext),
     githubRepo,
+    screenSize,
   });
 
   // Step 2: Poll for completion
@@ -355,7 +358,8 @@ export async function runMergeTest(
   testUrl: string,
   targetDurationMinutes: number,
   prContext: PRContext | null,
-  githubRepo?: string
+  githubRepo?: string,
+  screenSize?: ScreenSizeConfig
 ): Promise<QATestResponse> {
   core.debug(`Running merge QA test on ${testUrl}`);
 
@@ -367,6 +371,7 @@ export async function runMergeTest(
     targetDurationMinutes,
     additionalValidationInstructions: formatMergeTestingContext(analysis, prContext),
     githubRepo,
+    screenSize,
   });
 
   // Step 2: Poll for completion

@@ -1,6 +1,6 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
-import type { ParsedInputs } from './types';
+import type { ParsedInputs, ScreenSizeConfig } from './types';
 import { parseIssueFilter } from './github/issue-filter';
 
 /**
@@ -24,6 +24,7 @@ export function parseInputs(): ParsedInputs {
   const issuePatternStr = core.getInput('issue-pattern');
   const testMerges = core.getInput('test-merges') !== 'false';
   const autoModeOnlyMissingMedia = core.getInput('auto-mode-only-missing-media') === 'true';
+  const screenSizeStr = core.getInput('screen-size') || 'desktop';
 
   // Validate API key format
   if (!apiKey.startsWith('qa_live_')) {
@@ -76,6 +77,36 @@ export function parseInputs(): ParsedInputs {
     }
   }
 
+  // Parse screen size input
+  let screenSize: ScreenSizeConfig | undefined;
+  const validPresets = ['desktop', 'laptop', 'tablet', 'mobile'];
+  if (validPresets.includes(screenSizeStr)) {
+    screenSize = screenSizeStr as ScreenSizeConfig;
+  } else {
+    // Try parsing as JSON for custom dimensions
+    try {
+      const parsed = JSON.parse(screenSizeStr);
+      if (typeof parsed === 'object' && parsed !== null && 'width' in parsed && 'height' in parsed) {
+        const width = Number(parsed.width);
+        const height = Number(parsed.height);
+        if (!isNaN(width) && !isNaN(height) && width >= 320 && width <= 3840 && height >= 240 && height <= 2160) {
+          screenSize = { width, height };
+        } else {
+          throw new Error('Screen size dimensions must be: width 320-3840, height 240-2160');
+        }
+      } else {
+        throw new Error('Custom screen size must have width and height properties');
+      }
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        throw new Error(
+          `Invalid screen-size: "${screenSizeStr}". Use preset (desktop, laptop, tablet, mobile) or JSON {"width": N, "height": N}`
+        );
+      }
+      throw error;
+    }
+  }
+
   // Get current GitHub repo from context
   const { owner, repo } = github.context.repo;
   const githubRepo = `${owner}/${repo}`;
@@ -99,6 +130,7 @@ export function parseInputs(): ParsedInputs {
     githubRepo,
     testMerges,
     autoModeOnlyMissingMedia,
+    screenSize,
   };
 }
 

@@ -10,6 +10,8 @@ export type {
   QATestResult,
 } from '@runhuman/shared';
 
+export type ScreenSizeConfig = 'desktop' | 'laptop' | 'tablet' | 'mobile' | { width: number; height: number };
+
 // Alias for backward compatibility
 import type { QATestResult } from '@runhuman/shared';
 export type QATestResponse = QATestResult;
@@ -44,6 +46,8 @@ export interface ParsedInputs {
   testMerges: boolean;
   /** Only test issues missing reproduction media (AI analyzes issue + comments) */
   autoModeOnlyMissingMedia: boolean;
+  /** Screen size for testing (preset or custom dimensions) */
+  screenSize?: ScreenSizeConfig;
 }
 
 /**
