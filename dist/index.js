@@ -30344,7 +30344,7 @@ When validating the test results, consider whether the tester's findings align w
 /**
  * Call the Runhuman API to run a QA test (async with polling)
  */
-async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes, issue, prContext, githubRepo) {
+async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes, issue, prContext, githubRepo, screenSize) {
     if (!analysis.testUrl) {
         throw new Error('No test URL provided in analysis');
     }
@@ -30357,6 +30357,7 @@ async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes, issue,
         targetDurationMinutes,
         additionalValidationInstructions: formatTestingContext(issue, prContext),
         githubRepo,
+        screenSize,
     });
     // Step 2: Poll for completion
     core.info(`Waiting for job ${jobId} to complete...`);
@@ -30407,7 +30408,7 @@ When validating the test results, consider whether the tester's findings confirm
 /**
  * Run a QA test for a merge (no linked issue)
  */
-async function runMergeTest(apiKey, apiUrl, analysis, testUrl, targetDurationMinutes, prContext, githubRepo) {
+async function runMergeTest(apiKey, apiUrl, analysis, testUrl, targetDurationMinutes, prContext, githubRepo, screenSize) {
     core.debug(`Running merge QA test on ${testUrl}`);
     // Step 1: Create the job
     const jobId = await createJob(apiKey, apiUrl, {
@@ -30417,6 +30418,7 @@ async function runMergeTest(apiKey, apiUrl, analysis, testUrl, targetDurationMin
         targetDurationMinutes,
         additionalValidationInstructions: formatMergeTestingContext(analysis, prContext),
         githubRepo,
+        screenSize,
     });
     // Step 2: Poll for completion
     core.info(`Waiting for job ${jobId} to complete...`);
@@ -30495,7 +30497,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.postTestResultComment = postTestResultComment;
 const github = __importStar(__nccwpck_require__(5683));
 const core = __importStar(__nccwpck_require__(7184));
-const shared_1 = __nccwpck_require__(779);
+const shared_1 = __nccwpck_require__(3371);
 /** Job statuses that indicate the job failed (not just the test) */
 const FAILED_JOB_STATUSES = ['abandoned', 'error', 'incomplete'];
 /**
@@ -31637,6 +31639,7 @@ function parseInputs() {
     const issuePatternStr = core.getInput('issue-pattern');
     const testMerges = core.getInput('test-merges') !== 'false';
     const autoModeOnlyMissingMedia = core.getInput('auto-mode-only-missing-media') === 'true';
+    const screenSizeStr = core.getInput('screen-size') || 'desktop';
     // Validate API key format
     if (!apiKey.startsWith('qa_live_')) {
         throw new Error('Invalid API key format. API keys must start with "qa_live_". ' +
@@ -31680,6 +31683,37 @@ function parseInputs() {
             throw new Error('issue-pattern must be a valid regular expression');
         }
     }
+    // Parse screen size input
+    let screenSize;
+    const validPresets = ['desktop', 'laptop', 'tablet', 'mobile'];
+    if (validPresets.includes(screenSizeStr)) {
+        screenSize = screenSizeStr;
+    }
+    else {
+        // Try parsing as JSON for custom dimensions
+        try {
+            const parsed = JSON.parse(screenSizeStr);
+            if (typeof parsed === 'object' && parsed !== null && 'width' in parsed && 'height' in parsed) {
+                const width = Number(parsed.width);
+                const height = Number(parsed.height);
+                if (!isNaN(width) && !isNaN(height) && width >= 320 && width <= 3840 && height >= 240 && height <= 2160) {
+                    screenSize = { width, height };
+                }
+                else {
+                    throw new Error('Screen size dimensions must be: width 320-3840, height 240-2160');
+                }
+            }
+            else {
+                throw new Error('Custom screen size must have width and height properties');
+            }
+        }
+        catch (error) {
+            if (error instanceof SyntaxError) {
+                throw new Error(`Invalid screen-size: "${screenSizeStr}". Use preset (desktop, laptop, tablet, mobile) or JSON {"width": N, "height": N}`);
+            }
+            throw error;
+        }
+    }
     // Get current GitHub repo from context
     const { owner, repo } = github.context.repo;
     const githubRepo = `${owner}/${repo}`;
@@ -31702,6 +31736,7 @@ function parseInputs() {
         githubRepo,
         testMerges,
         autoModeOnlyMissingMedia,
+        screenSize,
     };
 }
 /**
@@ -32019,7 +32054,7 @@ async function processIssue(issue, inputs, results, prContext) {
         core.info(`Instructions: ${analysis.testInstructions.substring(0, 100)}...`);
         // Run the QA test
         core.info(`Running QA test for issue #${issue.number}...`);
-        const testResult = await (0, run_test_1.runQATest)(inputs.apiKey, inputs.apiUrl, analysis, inputs.targetDurationMinutes, issue, prContext, inputs.githubRepo);
+        const testResult = await (0, run_test_1.runQATest)(inputs.apiKey, inputs.apiUrl, analysis, inputs.targetDurationMinutes, issue, prContext, inputs.githubRepo, inputs.screenSize);
         result.testResult = testResult;
         result.status = 'tested';
         result.passed = testResult.result?.success ?? false;
@@ -32102,7 +32137,7 @@ async function processMergeTest(inputs, results, prContext) {
         core.info(`Affected areas: ${analysis.affectedAreas.join(', ')}`);
         // Run the QA test
         core.info(`Running QA test for merge on ${inputs.testUrl}...`);
-        const testResult = await (0, run_test_1.runMergeTest)(inputs.apiKey, inputs.apiUrl, analysis, inputs.testUrl, inputs.targetDurationMinutes, prContext, inputs.githubRepo);
+        const testResult = await (0, run_test_1.runMergeTest)(inputs.apiKey, inputs.apiUrl, analysis, inputs.testUrl, inputs.targetDurationMinutes, prContext, inputs.githubRepo, inputs.screenSize);
         result.testResult = testResult;
         result.status = 'tested';
         result.passed = testResult.result?.success ?? false;
@@ -34118,7 +34153,7 @@ module.exports = parseParams
 
 /***/ }),
 
-/***/ 779:
+/***/ 3371:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
 
 "use strict";
@@ -34130,15 +34165,22 @@ __nccwpck_require__.d(__webpack_exports__, {
   DEFAULT_ISSUE_TEST_CONFIG: () => (/* reexport */ DEFAULT_ISSUE_TEST_CONFIG),
   JOB_STATUS: () => (/* reexport */ JOB_STATUS),
   PAGINATION_DEFAULTS: () => (/* reexport */ PAGINATION_DEFAULTS),
+  SCREEN_SIZE_LIMITS: () => (/* reexport */ SCREEN_SIZE_LIMITS),
+  SCREEN_SIZE_PRESETS: () => (/* reexport */ SCREEN_SIZE_PRESETS),
   apiRoutes: () => (/* reexport */ apiRoutes),
   buildJobFailedComment: () => (/* reexport */ buildJobFailedComment),
   buildTestResultComment: () => (/* reexport */ buildTestResultComment),
   defineRoute: () => (/* reexport */ defineRoute),
   formatResultValue: () => (/* reexport */ formatResultValue),
+  getScreenSizePresetNames: () => (/* reexport */ getScreenSizePresetNames),
   isActiveStatus: () => (/* reexport */ isActiveStatus),
+  isCustomScreenSize: () => (/* reexport */ isCustomScreenSize),
   isPostTestStatus: () => (/* reexport */ isPostTestStatus),
+  isScreenSizePreset: () => (/* reexport */ isScreenSizePreset),
   isTerminalStatus: () => (/* reexport */ isTerminalStatus),
   parsePaginationParams: () => (/* reexport */ parsePaginationParams),
+  resolveScreenSize: () => (/* reexport */ resolveScreenSize),
+  validateScreenSize: () => (/* reexport */ validateScreenSize),
   webRoutes: () => (/* reexport */ webRoutes)
 });
 
@@ -34163,7 +34205,91 @@ function isPostTestStatus(status) {
     return status === 'creating_issues';
 }
 //# sourceMappingURL=job-status.js.map
+;// CONCATENATED MODULE: ../shared/dist/job/screen-size.types.js
+/**
+ * Screen size configuration for QA test jobs
+ * Allows users to specify viewport dimensions via presets or custom values
+ */
+/**
+ * Available screen size presets with their dimensions
+ */
+const SCREEN_SIZE_PRESETS = {
+    desktop: { width: 1920, height: 1080, label: 'Desktop' },
+    laptop: { width: 1366, height: 768, label: 'Laptop' },
+    tablet: { width: 768, height: 1024, label: 'Tablet' },
+    mobile: { width: 375, height: 667, label: 'Mobile' },
+};
+/**
+ * Minimum and maximum allowed dimensions for custom screen sizes
+ */
+const SCREEN_SIZE_LIMITS = {
+    minWidth: 320,
+    maxWidth: 3840,
+    minHeight: 240,
+    maxHeight: 2160,
+};
+/**
+ * Check if a value is a valid screen size preset name
+ */
+function isScreenSizePreset(value) {
+    return typeof value === 'string' && value in SCREEN_SIZE_PRESETS;
+}
+/**
+ * Check if a value is a custom screen size object
+ */
+function isCustomScreenSize(value) {
+    return (typeof value === 'object' &&
+        value !== null &&
+        'width' in value &&
+        'height' in value &&
+        typeof value.width === 'number' &&
+        typeof value.height === 'number');
+}
+/**
+ * Validate custom screen size dimensions are within allowed range
+ */
+function validateScreenSize(width, height) {
+    return (Number.isInteger(width) &&
+        Number.isInteger(height) &&
+        width >= SCREEN_SIZE_LIMITS.minWidth &&
+        width <= SCREEN_SIZE_LIMITS.maxWidth &&
+        height >= SCREEN_SIZE_LIMITS.minHeight &&
+        height <= SCREEN_SIZE_LIMITS.maxHeight);
+}
+/**
+ * Resolve a ScreenSizeConfig to actual dimensions
+ * Defaults to desktop (1920x1080) if no config provided
+ */
+function resolveScreenSize(config) {
+    if (!config) {
+        return {
+            width: SCREEN_SIZE_PRESETS.desktop.width,
+            height: SCREEN_SIZE_PRESETS.desktop.height,
+            preset: 'desktop',
+        };
+    }
+    if (typeof config === 'string') {
+        const preset = SCREEN_SIZE_PRESETS[config];
+        return {
+            width: preset.width,
+            height: preset.height,
+            preset: config,
+        };
+    }
+    return {
+        width: config.width,
+        height: config.height,
+    };
+}
+/**
+ * Get the list of available preset names
+ */
+function getScreenSizePresetNames() {
+    return Object.keys(SCREEN_SIZE_PRESETS);
+}
+//# sourceMappingURL=screen-size.types.js.map
 ;// CONCATENATED MODULE: ../shared/dist/job/index.js
+
 
 //# sourceMappingURL=index.js.map
 ;// CONCATENATED MODULE: ../shared/dist/pagination/pagination.types.js
