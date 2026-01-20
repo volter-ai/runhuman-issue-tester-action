@@ -1,5 +1,30 @@
 import * as core from '@actions/core';
+import * as github from '@actions/github';
 import type { QATestResponse, AnalyzeIssueResponse, AnalyzeMergeResponse, LinkedIssue, PlaywrightData, PRContext, PRComment, ScreenSizeConfig } from '../types';
+
+/** Job metadata for source tracking */
+interface JobMetadata {
+  source: string;
+  sourceCreatedAt: string;
+  githubAction?: {
+    actionName: string;
+    runId?: string;
+    workflowName?: string;
+    triggerEvent?: string;
+    actor?: string;
+  };
+  githubIssue?: {
+    repo: string;
+    issueNumber: number;
+    issueUrl: string;
+  };
+  githubPR?: {
+    repo: string;
+    prNumber: number;
+    prUrl: string;
+    mergeCommitSha?: string;
+  };
+}
 
 interface CreateJobRequest {
   url: string;
@@ -9,6 +34,69 @@ interface CreateJobRequest {
   additionalValidationInstructions?: string;
   githubRepo?: string;
   screenSize?: ScreenSizeConfig;
+  metadata?: JobMetadata;
+}
+
+/**
+ * Build base metadata with GitHub Action context
+ */
+function buildBaseMetadata(): JobMetadata {
+  const context = github.context;
+
+  return {
+    source: 'issue-tester-action',
+    sourceCreatedAt: new Date().toISOString(),
+    githubAction: {
+      actionName: 'issue-tester-action',
+      runId: context.runId?.toString(),
+      workflowName: context.workflow,
+      triggerEvent: context.eventName,
+      actor: context.actor,
+    },
+  };
+}
+
+/**
+ * Build metadata for issue testing
+ */
+function buildIssueTestMetadata(issue: LinkedIssue, githubRepo: string, prContext: PRContext | null): JobMetadata {
+  const metadata = buildBaseMetadata();
+
+  // Add GitHub issue context
+  metadata.githubIssue = {
+    repo: githubRepo,
+    issueNumber: issue.number,
+    issueUrl: `https://github.com/${githubRepo}/issues/${issue.number}`,
+  };
+
+  // Add PR context if available
+  if (prContext) {
+    metadata.githubPR = {
+      repo: githubRepo,
+      prNumber: prContext.number,
+      prUrl: `https://github.com/${githubRepo}/pull/${prContext.number}`,
+    };
+  }
+
+  return metadata;
+}
+
+/**
+ * Build metadata for merge testing (no linked issue)
+ */
+function buildMergeTestMetadata(githubRepo: string, prContext: PRContext | null): JobMetadata {
+  const metadata = buildBaseMetadata();
+
+  // Add PR context if available
+  if (prContext) {
+    metadata.githubPR = {
+      repo: githubRepo,
+      prNumber: prContext.number,
+      prUrl: `https://github.com/${githubRepo}/pull/${prContext.number}`,
+    };
+  }
+
+  return metadata;
 }
 
 interface CreateJobResponse {
@@ -293,6 +381,7 @@ export async function runQATest(
     additionalValidationInstructions: formatTestingContext(issue, prContext),
     githubRepo,
     screenSize,
+    metadata: buildIssueTestMetadata(issue, githubRepo || '', prContext),
   });
 
   // Step 2: Poll for completion
@@ -372,6 +461,7 @@ export async function runMergeTest(
     additionalValidationInstructions: formatMergeTestingContext(analysis, prContext),
     githubRepo,
     screenSize,
+    metadata: buildMergeTestMetadata(githubRepo || '', prContext),
   });
 
   // Step 2: Poll for completion
