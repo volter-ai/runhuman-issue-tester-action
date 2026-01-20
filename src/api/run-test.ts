@@ -1,5 +1,6 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
+import { extractIssueAttachments, type JobAttachment } from '@runhuman/shared';
 import type { QATestResponse, AnalyzeIssueResponse, AnalyzeMergeResponse, LinkedIssue, PlaywrightData, PRContext, PRComment, ScreenSizeConfig } from '../types';
 
 /** Job metadata for source tracking */
@@ -34,6 +35,7 @@ interface CreateJobRequest {
   additionalValidationInstructions?: string;
   githubRepo?: string;
   screenSize?: ScreenSizeConfig;
+  attachments?: JobAttachment[];
   metadata?: JobMetadata;
 }
 
@@ -372,6 +374,12 @@ export async function runQATest(
 
   core.debug(`Running QA test on ${analysis.testUrl}`);
 
+  // Extract media attachments from issue body and comments
+  const attachments = extractIssueAttachments(issue.body || '', issue.comments);
+  if (attachments.length > 0) {
+    core.info(`Found ${attachments.length} media attachment(s) from issue`);
+  }
+
   // Step 1: Create the job
   const jobId = await createJob(apiKey, apiUrl, {
     url: analysis.testUrl,
@@ -381,6 +389,7 @@ export async function runQATest(
     additionalValidationInstructions: formatTestingContext(issue, prContext),
     githubRepo,
     screenSize,
+    attachments: attachments.length > 0 ? attachments : undefined,
     metadata: buildIssueTestMetadata(issue, githubRepo || '', prContext),
   });
 
