@@ -30160,6 +30160,61 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.runQATest = runQATest;
 exports.runMergeTest = runMergeTest;
 const core = __importStar(__nccwpck_require__(7184));
+const github = __importStar(__nccwpck_require__(5683));
+const shared_1 = __nccwpck_require__(5656);
+/**
+ * Build base metadata with GitHub Action context
+ */
+function buildBaseMetadata() {
+    const context = github.context;
+    return {
+        source: 'issue-tester-action',
+        sourceCreatedAt: new Date().toISOString(),
+        githubAction: {
+            actionName: 'issue-tester-action',
+            runId: context.runId?.toString(),
+            workflowName: context.workflow,
+            triggerEvent: context.eventName,
+            actor: context.actor,
+        },
+    };
+}
+/**
+ * Build metadata for issue testing
+ */
+function buildIssueTestMetadata(issue, githubRepo, prContext) {
+    const metadata = buildBaseMetadata();
+    // Add GitHub issue context
+    metadata.githubIssue = {
+        repo: githubRepo,
+        issueNumber: issue.number,
+        issueUrl: `https://github.com/${githubRepo}/issues/${issue.number}`,
+    };
+    // Add PR context if available
+    if (prContext) {
+        metadata.githubPR = {
+            repo: githubRepo,
+            prNumber: prContext.number,
+            prUrl: `https://github.com/${githubRepo}/pull/${prContext.number}`,
+        };
+    }
+    return metadata;
+}
+/**
+ * Build metadata for merge testing (no linked issue)
+ */
+function buildMergeTestMetadata(githubRepo, prContext) {
+    const metadata = buildBaseMetadata();
+    // Add PR context if available
+    if (prContext) {
+        metadata.githubPR = {
+            repo: githubRepo,
+            prNumber: prContext.number,
+            prUrl: `https://github.com/${githubRepo}/pull/${prContext.number}`,
+        };
+    }
+    return metadata;
+}
 // Terminal states that indicate the job is done
 const TERMINAL_STATES = ['completed', 'error', 'abandoned', 'incomplete'];
 // Polling configuration
@@ -30349,6 +30404,11 @@ async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes, issue,
         throw new Error('No test URL provided in analysis');
     }
     core.debug(`Running QA test on ${analysis.testUrl}`);
+    // Extract media attachments from issue body and comments
+    const attachments = (0, shared_1.extractIssueAttachments)(issue.body || '', issue.comments);
+    if (attachments.length > 0) {
+        core.info(`Found ${attachments.length} media attachment(s) from issue`);
+    }
     // Step 1: Create the job
     const jobId = await createJob(apiKey, apiUrl, {
         url: analysis.testUrl,
@@ -30358,6 +30418,8 @@ async function runQATest(apiKey, apiUrl, analysis, targetDurationMinutes, issue,
         additionalValidationInstructions: formatTestingContext(issue, prContext),
         githubRepo,
         screenSize,
+        attachments: attachments.length > 0 ? attachments : undefined,
+        metadata: buildIssueTestMetadata(issue, githubRepo || '', prContext),
     });
     // Step 2: Poll for completion
     core.info(`Waiting for job ${jobId} to complete...`);
@@ -30419,6 +30481,7 @@ async function runMergeTest(apiKey, apiUrl, analysis, testUrl, targetDurationMin
         additionalValidationInstructions: formatMergeTestingContext(analysis, prContext),
         githubRepo,
         screenSize,
+        metadata: buildMergeTestMetadata(githubRepo || '', prContext),
     });
     // Step 2: Poll for completion
     core.info(`Waiting for job ${jobId} to complete...`);
@@ -30497,7 +30560,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.postTestResultComment = postTestResultComment;
 const github = __importStar(__nccwpck_require__(5683));
 const core = __importStar(__nccwpck_require__(7184));
-const shared_1 = __nccwpck_require__(3371);
+const shared_1 = __nccwpck_require__(5656);
 /** Job statuses that indicate the job failed (not just the test) */
 const FAILED_JOB_STATUSES = ['abandoned', 'error', 'incomplete'];
 /**
@@ -31188,7 +31251,7 @@ async function getLinkedIssues(githubToken, prNumber) {
     const linkedIssues = nodes.map((node) => ({
         number: node.number,
         title: node.title,
-        body: node.body,
+        body: node.body ?? '',
         state: node.state,
         labels: node.labels.nodes,
     }));
@@ -34153,7 +34216,7 @@ module.exports = parseParams
 
 /***/ }),
 
-/***/ 3371:
+/***/ 5656:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
 
 "use strict";
@@ -34164,6 +34227,7 @@ __nccwpck_require__.r(__webpack_exports__);
 __nccwpck_require__.d(__webpack_exports__, {
   DEFAULT_ISSUE_TEST_CONFIG: () => (/* reexport */ DEFAULT_ISSUE_TEST_CONFIG),
   JOB_STATUS: () => (/* reexport */ JOB_STATUS),
+  MAX_ATTACHMENTS: () => (/* reexport */ MAX_ATTACHMENTS),
   PAGINATION_DEFAULTS: () => (/* reexport */ PAGINATION_DEFAULTS),
   SCREEN_SIZE_LIMITS: () => (/* reexport */ SCREEN_SIZE_LIMITS),
   SCREEN_SIZE_PRESETS: () => (/* reexport */ SCREEN_SIZE_PRESETS),
@@ -34171,6 +34235,8 @@ __nccwpck_require__.d(__webpack_exports__, {
   buildJobFailedComment: () => (/* reexport */ buildJobFailedComment),
   buildTestResultComment: () => (/* reexport */ buildTestResultComment),
   defineRoute: () => (/* reexport */ defineRoute),
+  detectAttachmentType: () => (/* reexport */ detectAttachmentType),
+  extractIssueAttachments: () => (/* reexport */ extractIssueAttachments),
   formatResultValue: () => (/* reexport */ formatResultValue),
   getScreenSizePresetNames: () => (/* reexport */ getScreenSizePresetNames),
   isActiveStatus: () => (/* reexport */ isActiveStatus),
@@ -34178,8 +34244,12 @@ __nccwpck_require__.d(__webpack_exports__, {
   isPostTestStatus: () => (/* reexport */ isPostTestStatus),
   isScreenSizePreset: () => (/* reexport */ isScreenSizePreset),
   isTerminalStatus: () => (/* reexport */ isTerminalStatus),
+  isValidAttachmentUrl: () => (/* reexport */ isValidAttachmentUrl),
+  normalizeAttachment: () => (/* reexport */ normalizeAttachment),
   parsePaginationParams: () => (/* reexport */ parsePaginationParams),
   resolveScreenSize: () => (/* reexport */ resolveScreenSize),
+  validateAttachment: () => (/* reexport */ validateAttachment),
+  validateAttachments: () => (/* reexport */ validateAttachments),
   validateScreenSize: () => (/* reexport */ validateScreenSize),
   webRoutes: () => (/* reexport */ webRoutes)
 });
@@ -34193,10 +34263,11 @@ const JOB_STATUS = {
     COMPLETED: 'completed',
     INCOMPLETE: 'incomplete',
     ABANDONED: 'abandoned',
+    REJECTED: 'rejected',
     ERROR: 'error',
 };
 function isTerminalStatus(status) {
-    return ['completed', 'incomplete', 'abandoned', 'error'].includes(status);
+    return ['completed', 'incomplete', 'abandoned', 'rejected', 'error'].includes(status);
 }
 function isActiveStatus(status) {
     return ['pending', 'waiting', 'working'].includes(status);
@@ -34205,6 +34276,135 @@ function isPostTestStatus(status) {
     return status === 'creating_issues';
 }
 //# sourceMappingURL=job-status.js.map
+;// CONCATENATED MODULE: ../shared/dist/job/attachment.types.js
+/**
+ * Attachment types for QA test jobs
+ * Allows users to attach images, videos, and documents to job descriptions
+ */
+/**
+ * Maximum number of attachments allowed per job
+ */
+const MAX_ATTACHMENTS = 10;
+/**
+ * File extensions mapped to attachment types
+ */
+const EXTENSION_TYPE_MAP = {
+    // Images
+    jpg: 'image',
+    jpeg: 'image',
+    png: 'image',
+    gif: 'image',
+    webp: 'image',
+    svg: 'image',
+    bmp: 'image',
+    ico: 'image',
+    // Videos
+    mp4: 'video',
+    webm: 'video',
+    mov: 'video',
+    avi: 'video',
+    mkv: 'video',
+    m4v: 'video',
+    // Documents
+    pdf: 'document',
+    doc: 'document',
+    docx: 'document',
+    xls: 'document',
+    xlsx: 'document',
+    ppt: 'document',
+    pptx: 'document',
+    txt: 'document',
+    md: 'document',
+    csv: 'document',
+};
+/**
+ * Detect attachment type from URL based on file extension
+ */
+function detectAttachmentType(url) {
+    try {
+        const urlObj = new URL(url);
+        const pathname = urlObj.pathname.toLowerCase();
+        // Extract extension from pathname
+        const lastDotIndex = pathname.lastIndexOf('.');
+        if (lastDotIndex === -1 || lastDotIndex === pathname.length - 1) {
+            return 'unknown';
+        }
+        const extension = pathname.slice(lastDotIndex + 1);
+        return EXTENSION_TYPE_MAP[extension] ?? 'unknown';
+    }
+    catch {
+        return 'unknown';
+    }
+}
+/**
+ * Validate that a string is a valid URL
+ */
+function isValidAttachmentUrl(url) {
+    try {
+        const urlObj = new URL(url);
+        // Only allow http and https protocols
+        return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Validate an attachment object
+ */
+function validateAttachment(attachment) {
+    if (typeof attachment !== 'object' || attachment === null) {
+        return false;
+    }
+    const att = attachment;
+    // URL is required and must be a valid string
+    if (typeof att.url !== 'string' || !isValidAttachmentUrl(att.url)) {
+        return false;
+    }
+    // Optional fields must be strings if present
+    if (att.title !== undefined && typeof att.title !== 'string') {
+        return false;
+    }
+    if (att.altText !== undefined && typeof att.altText !== 'string') {
+        return false;
+    }
+    // Type must be a valid AttachmentType if present
+    if (att.type !== undefined) {
+        const validTypes = ['image', 'video', 'document', 'unknown'];
+        if (!validTypes.includes(att.type)) {
+            return false;
+        }
+    }
+    return true;
+}
+/**
+ * Validate an array of attachments
+ * Returns an error message if invalid, undefined if valid
+ */
+function validateAttachments(attachments) {
+    if (!Array.isArray(attachments)) {
+        return 'attachments must be an array';
+    }
+    if (attachments.length > MAX_ATTACHMENTS) {
+        return `Maximum ${MAX_ATTACHMENTS} attachments allowed`;
+    }
+    for (let i = 0; i < attachments.length; i++) {
+        if (!validateAttachment(attachments[i])) {
+            return `Invalid attachment at index ${i}: must have a valid URL`;
+        }
+    }
+    return undefined;
+}
+/**
+ * Normalize an attachment by resolving its type if not provided
+ */
+function normalizeAttachment(attachment) {
+    return {
+        ...attachment,
+        type: attachment.type ?? detectAttachmentType(attachment.url),
+    };
+}
+//# sourceMappingURL=attachment.types.js.map
 ;// CONCATENATED MODULE: ../shared/dist/job/screen-size.types.js
 /**
  * Screen size configuration for QA test jobs
@@ -34214,7 +34414,7 @@ function isPostTestStatus(status) {
  * Available screen size presets with their dimensions
  */
 const SCREEN_SIZE_PRESETS = {
-    desktop: { width: 1920, height: 1080, label: 'Desktop' },
+    desktop: { width: 1600, height: 900, label: 'Desktop' },
     laptop: { width: 1366, height: 768, label: 'Laptop' },
     tablet: { width: 768, height: 1024, label: 'Tablet' },
     mobile: { width: 375, height: 667, label: 'Mobile' },
@@ -34258,7 +34458,7 @@ function validateScreenSize(width, height) {
 }
 /**
  * Resolve a ScreenSizeConfig to actual dimensions
- * Defaults to desktop (1920x1080) if no config provided
+ * Defaults to desktop preset if no config provided
  */
 function resolveScreenSize(config) {
     if (!config) {
@@ -34291,6 +34491,7 @@ function getScreenSizePresetNames() {
 ;// CONCATENATED MODULE: ../shared/dist/job/index.js
 
 
+
 //# sourceMappingURL=index.js.map
 ;// CONCATENATED MODULE: ../shared/dist/pagination/pagination.types.js
 const PAGINATION_DEFAULTS = {
@@ -34321,7 +34522,153 @@ const DEFAULT_ISSUE_TEST_CONFIG = {
     removeFailureLabelOnSuccess: true,
 };
 //# sourceMappingURL=github-issues.types.js.map
+;// CONCATENATED MODULE: ../shared/dist/github-issues/issue-media-extractor.js
+
+/**
+ * Extract media attachments from GitHub issue body and comments.
+ * Parses various markdown and HTML patterns commonly used in GitHub issues.
+ *
+ * @param issueBody - The issue body markdown
+ * @param comments - Optional array of comment bodies
+ * @returns Array of attachments (max 10)
+ */
+function extractIssueAttachments(issueBody, comments) {
+    const seenUrls = new Set();
+    const attachments = [];
+    // Combine issue body and all comments
+    const allContent = [issueBody, ...(comments || [])].filter(Boolean);
+    for (const content of allContent) {
+        const extracted = extractMediaFromMarkdown(content, seenUrls);
+        attachments.push(...extracted);
+        // Stop early if we've hit the limit
+        if (attachments.length >= MAX_ATTACHMENTS) {
+            break;
+        }
+    }
+    return attachments.slice(0, MAX_ATTACHMENTS);
+}
+/**
+ * Extract media URLs from a single markdown string
+ */
+function extractMediaFromMarkdown(content, seenUrls) {
+    const attachments = [];
+    // Pattern 1: Markdown images - ![alt text](url)
+    const markdownImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    for (const match of content.matchAll(markdownImageRegex)) {
+        const altText = match[1] || undefined;
+        const url = cleanUrl(match[2]);
+        addAttachment(attachments, seenUrls, url, altText);
+    }
+    // Pattern 2: HTML img tags - <img src="url" alt="...">
+    const imgTagRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    for (const match of content.matchAll(imgTagRegex)) {
+        const url = cleanUrl(match[1]);
+        // Try to extract alt text
+        const altMatch = match[0].match(/alt=["']([^"']+)["']/i);
+        const altText = altMatch?.[1] || undefined;
+        addAttachment(attachments, seenUrls, url, altText);
+    }
+    // Pattern 3: HTML video tags - <video src="url">
+    const videoTagRegex = /<video[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    for (const match of content.matchAll(videoTagRegex)) {
+        const url = cleanUrl(match[1]);
+        addAttachment(attachments, seenUrls, url);
+    }
+    // Pattern 4: GitHub user-images URLs (often directly embedded)
+    const userImagesRegex = /(https:\/\/user-images\.githubusercontent\.com\/[^\s)"'<>]+)/g;
+    for (const match of content.matchAll(userImagesRegex)) {
+        const url = cleanUrl(match[1]);
+        addAttachment(attachments, seenUrls, url);
+    }
+    // Pattern 5: GitHub assets URLs
+    const assetsRegex = /(https:\/\/github\.com\/[^/]+\/[^/]+\/assets\/[^\s)"'<>]+)/g;
+    for (const match of content.matchAll(assetsRegex)) {
+        const url = cleanUrl(match[1]);
+        addAttachment(attachments, seenUrls, url);
+    }
+    // Pattern 6: GitHub private user content (newer format)
+    const privateUserContentRegex = /(https:\/\/private-user-images\.githubusercontent\.com\/[^\s)"'<>]+)/g;
+    for (const match of content.matchAll(privateUserContentRegex)) {
+        const url = cleanUrl(match[1]);
+        addAttachment(attachments, seenUrls, url);
+    }
+    // Pattern 7: Direct video URLs (.mp4, .mov, .webm, .gif)
+    // These might appear as plain URLs in markdown
+    // Include query parameters in the capture, lookahead allows punctuation, whitespace, or end of string
+    const videoUrlRegex = /(https?:\/\/[^\s)"'<>]+\.(?:mp4|mov|webm|gif)(?:\?[^\s)"'<>]*)?)(?=[.,;:!?\s)"'<>]|$)/gi;
+    for (const match of content.matchAll(videoUrlRegex)) {
+        const url = cleanUrl(match[1]);
+        addAttachment(attachments, seenUrls, url);
+    }
+    // Pattern 8: Direct image URLs (.png, .jpg, .jpeg, .webp, .svg)
+    // These might appear as plain URLs outside of markdown image syntax
+    // Include query parameters in the capture, lookahead allows punctuation, whitespace, or end of string
+    const imageUrlRegex = /(https?:\/\/[^\s)"'<>]+\.(?:png|jpe?g|webp|svg|bmp)(?:\?[^\s)"'<>]*)?)(?=[.,;:!?\s)"'<>]|$)/gi;
+    for (const match of content.matchAll(imageUrlRegex)) {
+        const url = cleanUrl(match[1]);
+        addAttachment(attachments, seenUrls, url);
+    }
+    return attachments;
+}
+/**
+ * Clean a URL by removing trailing characters and decoding
+ */
+function cleanUrl(url) {
+    // Remove trailing punctuation that might be captured
+    return url.replace(/[,;:!?)]+$/, '').trim();
+}
+/**
+ * Add an attachment if valid and not seen before
+ */
+function addAttachment(attachments, seenUrls, url, altText) {
+    // Skip if already seen
+    if (seenUrls.has(url)) {
+        return;
+    }
+    // Skip if not a valid URL
+    if (!isValidAttachmentUrl(url)) {
+        return;
+    }
+    // Detect type and skip if unknown (we only want media)
+    const type = detectAttachmentType(url);
+    if (type === 'unknown' && !isKnownMediaHost(url)) {
+        return;
+    }
+    seenUrls.add(url);
+    attachments.push({
+        url,
+        altText,
+        type: type !== 'unknown' ? type : 'image', // Default to image for known hosts
+    });
+}
+/**
+ * Check if URL is from a known media hosting service
+ * (used to accept URLs without file extensions)
+ */
+function isKnownMediaHost(url) {
+    try {
+        const urlObj = new URL(url);
+        const host = urlObj.hostname.toLowerCase();
+        // GitHub media hosts
+        if (host === 'user-images.githubusercontent.com' ||
+            host === 'private-user-images.githubusercontent.com' ||
+            host === 'avatars.githubusercontent.com' ||
+            host === 'camo.githubusercontent.com') {
+            return true;
+        }
+        // GitHub assets (github.com/owner/repo/assets/...)
+        if (host === 'github.com' && urlObj.pathname.includes('/assets/')) {
+            return true;
+        }
+        return false;
+    }
+    catch {
+        return false;
+    }
+}
+//# sourceMappingURL=issue-media-extractor.js.map
 ;// CONCATENATED MODULE: ../shared/dist/github-issues/index.js
+
 
 //# sourceMappingURL=index.js.map
 ;// CONCATENATED MODULE: ../shared/dist/routes/route-builder.js
@@ -34394,6 +34741,8 @@ const webRoutes = {
     // ============================================
     /** Dashboard home page */
     dashboard: defineRoute('/dashboard'),
+    /** Onboarding flow */
+    onboarding: defineRoute('/dashboard/onboarding'),
     /** Projects list page */
     projects: defineRoute('/dashboard/projects'),
     /** Usage/analytics page */
@@ -34422,11 +34771,19 @@ const webRoutes = {
     job: defineRoute('/dashboard/:projectId/jobs/:jobId'),
     /** GitHub issues page */
     issues: defineRoute('/dashboard/:projectId/issues'),
+    /** Single issue detail (modal) */
+    issue: defineRoute('/dashboard/:projectId/issues/:issueNumber'),
+    /** Issue test sessions page */
+    issueSessions: defineRoute('/dashboard/:projectId/issue-sessions'),
+    /** Single test session detail (modal) */
+    issueSession: defineRoute('/dashboard/:projectId/issue-sessions/:sessionId'),
     /** Project settings page */
     projectSettings: defineRoute('/dashboard/:projectId/settings'),
     // ============================================
     // External/public routes
     // ============================================
+    /** Public job view with token-secured access */
+    publicJob: defineRoute('/j/:jobId/:token'),
     /** Documentation quick start */
     docs: defineRoute('/docs/quick-start'),
     /** Pricing page */
@@ -34464,6 +34821,8 @@ const apiRoutes = {
     jobStatus: defineRoute('/job/:jobId'),
     /** Synchronous job execution */
     run: defineRoute('/run'),
+    /** Get public job (no auth required, token-secured) */
+    publicJob: defineRoute('/public/jobs/:jobId/:token'),
     // ============================================
     // API Keys endpoints
     // ============================================
@@ -34484,6 +34843,8 @@ const apiRoutes = {
     projectJobs: defineRoute('/projects/:projectId/jobs'),
     /** Get API keys for a project */
     projectApiKeys: defineRoute('/projects/:projectId/api-keys'),
+    /** Bulk create projects from GitHub repos */
+    bulkCreateProjects: defineRoute('/projects/bulk'),
     // ============================================
     // GitHub endpoints
     // ============================================
@@ -34501,6 +34862,8 @@ const apiRoutes = {
     githubRepos: defineRoute('/github/repos'),
     /** Check if user has access to a specific repo */
     githubRepoCheckAccess: defineRoute('/github/repos/check-access'),
+    /** Find deployed URL for a repo */
+    githubRepoFindUrl: defineRoute('/github/repos/find-url'),
     /** List issues for a repo (by owner/repo) */
     githubIssuesByRepo: defineRoute('/github/issues/:owner/:repo'),
     /** List issues (by projectId query param) */
@@ -34521,8 +34884,14 @@ const apiRoutes = {
     githubTestSessions: defineRoute('/github/issues/test-sessions'),
     /** Get/delete a test session */
     githubTestSession: defineRoute('/github/issues/test-sessions/:sessionId'),
+    /** Mark a test session as seen */
+    githubTestSessionSeen: defineRoute('/github/issues/test-sessions/:sessionId/seen'),
+    /** Get counts of running and unseen test sessions */
+    githubTestSessionsCounts: defineRoute('/github/issues/test-sessions/counts'),
     /** Bulk test GitHub issues (legacy route) */
     githubBulkTest: defineRoute('/github/bulk-test'),
+    /** GitHub App webhooks (receives issue_comment events etc.) */
+    githubWebhooks: defineRoute('/github/webhooks'),
     // ============================================
     // Other endpoints
     // ============================================
@@ -34536,6 +34905,27 @@ const apiRoutes = {
     mergeAnalyzer: defineRoute('/merge-analyzer'),
     /** Logs endpoint */
     logs: defineRoute('/logs'),
+    // ============================================
+    // Relevant Issues endpoints
+    // ============================================
+    /** Run relevant issues discovery for user */
+    relevantIssuesDiscover: defineRoute('/relevant-issues/discover'),
+    /** Get latest cached relevant issues result */
+    relevantIssuesLatest: defineRoute('/relevant-issues/latest'),
+    // ============================================
+    // Onboarding endpoints
+    // ============================================
+    /** Get/update user's onboarding state */
+    onboarding: defineRoute('/onboarding'),
+    /** Mark onboarding as complete */
+    onboardingComplete: defineRoute('/onboarding/complete'),
+    /** Check if user needs onboarding */
+    onboardingCheck: defineRoute('/onboarding/check'),
+    // ============================================
+    // Search endpoints
+    // ============================================
+    /** Global search across jobs, projects, issues, sessions */
+    search: defineRoute('/search'),
 };
 //# sourceMappingURL=api-routes.js.map
 ;// CONCATENATED MODULE: ../shared/dist/routes/index.js
