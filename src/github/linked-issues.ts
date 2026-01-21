@@ -109,7 +109,7 @@ export async function getLinkedIssues(githubToken: string, prNumber?: number): P
   const linkedIssues: LinkedIssue[] = nodes.map((node) => ({
     number: node.number,
     title: node.title,
-    body: node.body,
+    body: node.body ?? '',
     state: node.state,
     labels: node.labels.nodes,
   }));
