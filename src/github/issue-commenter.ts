@@ -35,3 +35,35 @@ export async function postTestResultComment(
 
   core.info(`Posted test result comment to issue #${issueNumber}`);
 }
+
+/**
+ * Post a comment explaining why an issue was deemed not testable
+ */
+export async function postNotTestableComment(
+  githubToken: string,
+  issueNumber: number,
+  reason: string
+): Promise<void> {
+  const octokit = github.getOctokit(githubToken);
+  const { owner, repo } = github.context.repo;
+
+  const comment = `## QA Test Skipped
+
+This issue was analyzed but deemed **not testable** by our QA testing system.
+
+**Reason:** ${reason}
+
+---
+*Powered by [Runhuman](https://runhuman.com)*`;
+
+  core.debug(`Posting not-testable comment to issue #${issueNumber}`);
+
+  await octokit.rest.issues.createComment({
+    owner,
+    repo,
+    issue_number: issueNumber,
+    body: comment,
+  });
+
+  core.info(`Posted not-testable comment to issue #${issueNumber}`);
+}

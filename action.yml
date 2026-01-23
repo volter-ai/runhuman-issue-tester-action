@@ -43,22 +43,18 @@ inputs:
     description: 'Target test duration in minutes (1-60)'
     required: false
     default: '5'
-  reopen-on-failure:
-    description: 'Reopen issue if test fails'
+  on-not-testable:
+    description: 'Actions when issue is not testable. DSL: close, open, add-label:x, remove-label:x, comment'
     required: false
-    default: 'true'
-  failure-label:
-    description: 'Label to add when test fails (empty to disable)'
+    default: ''
+  on-success:
+    description: 'Actions when test passes. DSL: close, open, add-label:x, remove-label:x, comment'
     required: false
-    default: 'qa-failed'
-  remove-failure-label-on-success:
-    description: 'Remove failure label when test passes'
+    default: ''
+  on-failure:
+    description: 'Actions when test fails. DSL: close, open, add-label:x, remove-label:x, comment'
     required: false
-    default: 'true'
-  close-on-success:
-    description: 'Close issue when test passes'
-    required: false
-    default: 'true'
+    default: ''
   issue-pattern:
     description: 'Custom regex pattern to detect issue numbers in commit messages (must have a capture group for the issue number)'
     required: false

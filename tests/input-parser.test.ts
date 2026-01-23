@@ -38,9 +38,9 @@ describe('parseInputs', () => {
         'qa-label': 'qa-test',
         'auto-detect': 'false',
         'target-duration-minutes': '5',
-        'reopen-on-failure': 'true',
-        'failure-label': 'qa-failed',
-        'remove-failure-label-on-success': 'true',
+        'on-success': 'close',
+        'on-failure': 'open add-label:qa-failed',
+        'on-not-testable': 'comment',
       };
       return inputs[name] || '';
     });
@@ -53,9 +53,9 @@ describe('parseInputs', () => {
     expect(result.qaLabel).toBe('qa-test');
     expect(result.autoDetect).toBe(false);
     expect(result.targetDurationMinutes).toBe(5);
-    expect(result.reopenOnFailure).toBe(true);
-    expect(result.failureLabel).toBe('qa-failed');
-    expect(result.removeFailureLabelOnSuccess).toBe(true);
+    expect(result.onSuccess).toBe('close');
+    expect(result.onFailure).toBe('open add-label:qa-failed');
+    expect(result.onNotTestable).toBe('comment');
     expect(result.githubRepo).toBe('test-owner/test-repo');
   });
 
@@ -99,7 +99,9 @@ describe('parseInputs', () => {
     expect(result.qaLabel).toBe('qa-test');
     expect(result.autoDetect).toBe(true); // Default is now true
     expect(result.targetDurationMinutes).toBe(5);
-    expect(result.failureLabel).toBe('qa-failed');
+    expect(result.onSuccess).toBe('');
+    expect(result.onFailure).toBe('');
+    expect(result.onNotTestable).toBe('');
   });
 
   it('should parse auto-detect as true when set', () => {
@@ -144,10 +146,25 @@ describe('parseInputs', () => {
 
     const result = parseInputs();
 
-    expect(result.issueNumber).toBe(42);
+    expect(result.issueNumbers).toEqual([42]);
   });
 
-  it('should set issueNumber to null when not provided', () => {
+  it('should parse multiple issue-numbers when provided', () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      const inputs: Record<string, string> = {
+        'api-key': 'qa_live_test123',
+        'github-token': 'ghp_test',
+        'issue-number': '42, 123, 456',
+      };
+      return inputs[name] || '';
+    });
+
+    const result = parseInputs();
+
+    expect(result.issueNumbers).toEqual([42, 123, 456]);
+  });
+
+  it('should set issueNumbers to empty array when not provided', () => {
     vi.mocked(core.getInput).mockImplementation((name: string) => {
       const inputs: Record<string, string> = {
         'api-key': 'qa_live_test123',
@@ -158,7 +175,7 @@ describe('parseInputs', () => {
 
     const result = parseInputs();
 
-    expect(result.issueNumber).toBeNull();
+    expect(result.issueNumbers).toEqual([]);
   });
 
   it('should throw error for invalid issue-number', () => {
@@ -171,7 +188,7 @@ describe('parseInputs', () => {
       return inputs[name] || '';
     });
 
-    expect(() => parseInputs()).toThrow('issue-number must be a positive integer');
+    expect(() => parseInputs()).toThrow('Invalid issue number');
   });
 
   it('should parse test-url when provided', () => {
@@ -242,5 +259,33 @@ describe('parseInputs', () => {
     });
 
     expect(() => parseInputs()).toThrow('test-url must be a valid URL');
+  });
+
+  it('should throw error for invalid on-success action DSL', () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      const inputs: Record<string, string> = {
+        'api-key': 'qa_live_test123',
+        'github-token': 'ghp_test',
+        'on-success': 'invalid-action',
+      };
+      return inputs[name] || '';
+    });
+
+    expect(() => parseInputs()).toThrow('Unknown action');
+  });
+
+  it('should parse action DSL with quoted labels', () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      const inputs: Record<string, string> = {
+        'api-key': 'qa_live_test123',
+        'github-token': 'ghp_test',
+        'on-success': 'close remove-label:"stage: QA" add-label:"stage: Released"',
+      };
+      return inputs[name] || '';
+    });
+
+    const result = parseInputs();
+
+    expect(result.onSuccess).toBe('close remove-label:"stage: QA" add-label:"stage: Released"');
   });
 });

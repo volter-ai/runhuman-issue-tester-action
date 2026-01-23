@@ -1,6 +1,7 @@
 import * as github from '@actions/github';
 import * as core from '@actions/core';
 import type { LinkedIssue } from '../types';
+import { tokenizeString, stripQuotes } from '../utils/tokenizer';
 
 /**
  * Parsed filter options from filter query string
@@ -16,47 +17,6 @@ export interface IssueFilterOptions {
   noMedia?: boolean;
   noScreenshots?: boolean;
   noVideo?: boolean;
-}
-
-/**
- * Tokenize filter string, respecting quoted values.
- * Splits by whitespace BUT preserves quoted strings.
- *
- * @example tokenizeFilter('state:open label:bug') -> ['state:open', 'label:bug']
- * @example tokenizeFilter('label:"stage: QA"') -> ['label:"stage: QA"']
- * @example tokenizeFilter('label:"has spaces" state:open') -> ['label:"has spaces"', 'state:open']
- */
-function tokenizeFilter(filter: string): string[] {
-  const tokens: string[] = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (const char of filter.trim()) {
-    if (char === '"') {
-      inQuotes = !inQuotes;
-      current += char;
-    } else if (char === ' ' && !inQuotes) {
-      if (current) {
-        tokens.push(current);
-        current = '';
-      }
-    } else {
-      current += char;
-    }
-  }
-
-  if (current) tokens.push(current);
-  return tokens;
-}
-
-/**
- * Strip surrounding quotes from a value if present.
- */
-function stripQuotes(value: string): string {
-  if (value.startsWith('"') && value.endsWith('"')) {
-    return value.slice(1, -1);
-  }
-  return value;
 }
 
 /**
@@ -81,7 +41,7 @@ export function parseIssueFilter(filter: string): IssueFilterOptions {
     state: 'open', // Default to open issues
   };
 
-  const tokens = tokenizeFilter(filter);
+  const tokens = tokenizeString(filter);
 
   for (const token of tokens) {
     const lowerToken = token.toLowerCase();

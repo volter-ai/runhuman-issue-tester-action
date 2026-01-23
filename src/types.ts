@@ -26,10 +26,6 @@ export interface ParsedInputs {
   qaLabel: string;
   autoDetect: boolean;
   targetDurationMinutes: number;
-  reopenOnFailure: boolean;
-  failureLabel: string;
-  removeFailureLabelOnSuccess: boolean;
-  closeOnSuccess: boolean;
   /** Specific issue number(s) for manual testing (empty = use filter or PR linked issues flow) */
   issueNumbers: number[];
   /** Filter query string for dynamic issue selection (null = use manual or PR linked issues flow) */
@@ -48,6 +44,12 @@ export interface ParsedInputs {
   autoModeOnlyMissingMedia: boolean;
   /** Screen size for testing (preset or custom dimensions) */
   screenSize?: ScreenSizeConfig;
+  /** Actions DSL to execute when issue is not testable (e.g., 'close add-label:"not-testable"') */
+  onNotTestable: string;
+  /** Actions DSL to execute when test passes (e.g., 'close add-label:"released"') */
+  onSuccess: string;
+  /** Actions DSL to execute when test fails (e.g., 'open add-label:"qa-failed"') */
+  onFailure: string;
 }
 
 /**

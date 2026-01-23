@@ -5,12 +5,12 @@ import { getLinkedIssues, hasLabel, findMergedPRForCommit, getIssuesFromCommitMe
 import { isMergeCommit, getMergeData } from './github/merge-detection';
 import { getPRContext } from './github/pr-context';
 import { postTestResultComment } from './github/issue-commenter';
-import { reopenIssue, addLabel, removeLabel, ensureIssueClosed } from './github/issue-manager';
 import { parseIssueFilter, queryIssuesWithFilter, getIssuesByNumbers } from './github/issue-filter';
 import { getIssueComments } from './github/issue-comments';
 import { analyzeIssue } from './api/analyze-issue';
 import { analyzeMerge } from './api/analyze-merge';
 import { runQATest, runMergeTest } from './api/run-test';
+import { parseActions, executeActions } from './actions';
 import type { ActionResults, IssueTestResult, LinkedIssue, PRContext, MergeTestResult } from './types';
 
 /**
@@ -242,9 +242,21 @@ async function processIssue(
 
     // Check if testable
     if (!analysis.isTestable) {
-      core.info(`Issue #${issue.number} is not testable: ${analysis.reason}`);
+      const skipReason = analysis.reason || 'Not testable by human';
+      core.info(`Issue #${issue.number} is not testable: ${skipReason}`);
+
+      // Execute on-not-testable actions
+      if (inputs.onNotTestable) {
+        const actions = parseActions(inputs.onNotTestable);
+        await executeActions(actions, {
+          githubToken: inputs.githubToken,
+          issueNumber: issue.number,
+          reason: skipReason,
+        });
+      }
+
       result.status = 'skipped';
-      result.skipReason = analysis.reason || 'Not testable by human';
+      result.skipReason = skipReason;
       results.skippedIssues.push(issue.number);
       results.results.push(result);
       return;
@@ -254,9 +266,21 @@ async function processIssue(
     const testUrl = inputs.testUrl || analysis.testUrl;
 
     if (!testUrl) {
+      const skipReason = 'No testable URL found in issue (provide test-url input to override)';
       core.info(`Issue #${issue.number}: No testable URL found`);
+
+      // Execute on-not-testable actions (no URL is also not testable)
+      if (inputs.onNotTestable) {
+        const actions = parseActions(inputs.onNotTestable);
+        await executeActions(actions, {
+          githubToken: inputs.githubToken,
+          issueNumber: issue.number,
+          reason: skipReason,
+        });
+      }
+
       result.status = 'skipped';
-      result.skipReason = 'No testable URL found in issue (provide test-url input to override)';
+      result.skipReason = skipReason;
       results.skippedIssues.push(issue.number);
       results.results.push(result);
       return;
@@ -302,23 +326,26 @@ async function processIssue(
       core.info(`Issue #${issue.number}: Test PASSED`);
       results.passedIssues.push(issue.number);
 
-      // Close issue and remove failure label
-      if (inputs.closeOnSuccess) {
-        await ensureIssueClosed(inputs.githubToken, issue.number);
-      }
-      if (inputs.removeFailureLabelOnSuccess && inputs.failureLabel) {
-        await removeLabel(inputs.githubToken, issue.number, inputs.failureLabel);
+      // Execute on-success actions
+      if (inputs.onSuccess) {
+        const actions = parseActions(inputs.onSuccess);
+        await executeActions(actions, {
+          githubToken: inputs.githubToken,
+          issueNumber: issue.number,
+        });
       }
     } else {
       core.info(`Issue #${issue.number}: Test FAILED`);
       results.failedIssues.push(issue.number);
 
-      // Reopen issue and add failure label
-      if (inputs.reopenOnFailure) {
-        await reopenIssue(inputs.githubToken, issue.number);
-      }
-      if (inputs.failureLabel) {
-        await addLabel(inputs.githubToken, issue.number, inputs.failureLabel);
+      // Execute on-failure actions
+      if (inputs.onFailure) {
+        const actions = parseActions(inputs.onFailure);
+        await executeActions(actions, {
+          githubToken: inputs.githubToken,
+          issueNumber: issue.number,
+          reason: testResult.result?.explanation,
+        });
       }
     }
 

@@ -2,6 +2,7 @@ import * as core from '@actions/core';
 import * as github from '@actions/github';
 import type { ParsedInputs, ScreenSizeConfig } from './types';
 import { parseIssueFilter } from './github/issue-filter';
+import { parseActions } from './actions/action-parser';
 
 /**
  * Parse and validate action inputs
@@ -13,10 +14,6 @@ export function parseInputs(): ParsedInputs {
   const qaLabel = core.getInput('qa-label') || 'qa-test';
   const autoDetect = core.getInput('auto-detect') !== 'false';
   const targetDurationMinutesStr = core.getInput('target-duration-minutes') || '5';
-  const reopenOnFailure = core.getInput('reopen-on-failure') !== 'false';
-  const failureLabel = core.getInput('failure-label') || 'qa-failed';
-  const removeFailureLabelOnSuccess = core.getInput('remove-failure-label-on-success') !== 'false';
-  const closeOnSuccess = core.getInput('close-on-success') !== 'false';
   const issueNumberStr = core.getInput('issue-number');
   const issueFilterStr = core.getInput('issue-filter');
   const maxIssuesStr = core.getInput('max-issues') || '10';
@@ -25,6 +22,11 @@ export function parseInputs(): ParsedInputs {
   const testMerges = core.getInput('test-merges') !== 'false';
   const autoModeOnlyMissingMedia = core.getInput('auto-mode-only-missing-media') === 'true';
   const screenSizeStr = core.getInput('screen-size') || 'desktop';
+
+  // New action DSL inputs
+  const onNotTestable = core.getInput('on-not-testable') || '';
+  const onSuccess = core.getInput('on-success') || '';
+  const onFailure = core.getInput('on-failure') || '';
 
   // Validate API key format
   if (!apiKey.startsWith('qa_live_')) {
@@ -107,6 +109,17 @@ export function parseInputs(): ParsedInputs {
     }
   }
 
+  // Validate action DSL inputs (will throw if invalid)
+  if (onNotTestable) {
+    parseActions(onNotTestable);
+  }
+  if (onSuccess) {
+    parseActions(onSuccess);
+  }
+  if (onFailure) {
+    parseActions(onFailure);
+  }
+
   // Get current GitHub repo from context
   const { owner, repo } = github.context.repo;
   const githubRepo = `${owner}/${repo}`;
@@ -118,10 +131,6 @@ export function parseInputs(): ParsedInputs {
     qaLabel,
     autoDetect,
     targetDurationMinutes,
-    reopenOnFailure,
-    failureLabel,
-    removeFailureLabelOnSuccess,
-    closeOnSuccess,
     issueNumbers,
     issueFilter,
     maxIssues,
@@ -131,6 +140,9 @@ export function parseInputs(): ParsedInputs {
     testMerges,
     autoModeOnlyMissingMedia,
     screenSize,
+    onNotTestable,
+    onSuccess,
+    onFailure,
   };
 }
 

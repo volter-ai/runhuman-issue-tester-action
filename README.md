@@ -44,6 +44,8 @@ jobs:
   test-issues:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,6 +53,8 @@ jobs:
       - uses: runhuman/issue-tester-action@v1
         with:
           api-key: ${{ secrets.RUNHUMAN_API_KEY }}
+          on-success: 'close'
+          on-failure: 'open add-label:qa-failed'
 ```
 
 ## Permissions
@@ -71,9 +75,8 @@ jobs:
 
 **Why `write` instead of `read`?** The action needs to:
 - Read issues (filter mode, manual mode)
-- Close issues on test pass (`close-on-success`)
-- Reopen issues on test fail (`reopen-on-failure`)
-- Add/remove labels (`failure-label`, `remove-failure-label-on-success`)
+- Close/reopen issues based on test results
+- Add/remove labels via the Action DSL
 
 ## Inputs
 
@@ -89,12 +92,12 @@ jobs:
 | `auto-detect` | No | `true` | Let AI evaluate unlabeled issues for testability |
 | `issue-pattern` | No | - | Custom regex to find issue numbers in commits |
 | `target-duration-minutes` | No | `5` | Target test duration (1-60 minutes) |
-| `reopen-on-failure` | No | `true` | Reopen issue if test fails |
-| `failure-label` | No | `qa-failed` | Label to add when test fails |
-| `remove-failure-label-on-success` | No | `true` | Remove failure label on pass |
-| `close-on-success` | No | `true` | Close issue when test passes |
+| `on-not-testable` | No | - | Actions when issue is not testable (see [Action DSL](#action-dsl)) |
+| `on-success` | No | - | Actions when test passes (see [Action DSL](#action-dsl)) |
+| `on-failure` | No | - | Actions when test fails (see [Action DSL](#action-dsl)) |
 | `test-merges` | No | `true` | Test merge commits with no linked issues (requires test-url) |
 | `auto-mode-only-missing-media` | No | `false` | Only test issues missing reproduction media (AI analyzes issue + comments) |
+| `screen-size` | No | `desktop` | Screen size: `desktop`, `laptop`, `tablet`, `mobile`, or JSON `{"width": N, "height": N}` |
 | `api-url` | No | `https://runhuman.com` | Runhuman API base URL |
 
 ## Outputs
@@ -267,6 +270,65 @@ When `auto-mode-only-missing-media` is enabled, the action only tests issues tha
 - Architectural diagrams
 - Code syntax highlighting images
 
+## Action DSL
+
+Control what happens on test outcomes with a simple DSL (Domain Specific Language).
+
+### Syntax
+
+Actions are space-separated. Labels with spaces or colons use quotes:
+
+| Action | Syntax | Description |
+|--------|--------|-------------|
+| close | `close` | Close the issue |
+| open | `open` | Reopen the issue |
+| add-label | `add-label:bug` | Add a label |
+| add-label (quoted) | `add-label:"stage: QA"` | Add label with special characters |
+| remove-label | `remove-label:bug` | Remove a label |
+| remove-label (quoted) | `remove-label:"stage: QA"` | Remove label with special characters |
+| comment | `comment` | Post a comment explaining the action |
+
+### Example: Stage-based Workflow
+
+Transition issues through stages based on test results:
+
+```yaml
+- uses: runhuman/issue-tester-action@v1
+  with:
+    api-key: ${{ secrets.RUNHUMAN_API_KEY }}
+    issue-filter: 'state:open label:"stage: QA"'
+    test-url: ${{ vars.STAGING_URL }}
+    # Not testable → close and mark as released
+    on-not-testable: 'close remove-label:"stage: QA" add-label:"stage: Released"'
+    # Test passed → close and mark as released
+    on-success: 'close remove-label:"stage: QA" add-label:"stage: Released"'
+    # Test failed → reopen and send back to development
+    on-failure: 'open remove-label:"stage: QA" add-label:"stage: In Progress"'
+```
+
+### Example: Simple Pass/Fail
+
+Close on success, reopen and label on failure:
+
+```yaml
+- uses: runhuman/issue-tester-action@v1
+  with:
+    api-key: ${{ secrets.RUNHUMAN_API_KEY }}
+    on-success: 'close'
+    on-failure: 'open add-label:qa-failed'
+```
+
+### Example: Comment on Skip
+
+Post a comment explaining why an issue was skipped:
+
+```yaml
+- uses: runhuman/issue-tester-action@v1
+  with:
+    api-key: ${{ secrets.RUNHUMAN_API_KEY }}
+    on-not-testable: 'comment add-label:not-testable'
+```
+
 ## Test URL Handling
 
 ### AI URL Detection
@@ -381,13 +443,15 @@ To disable merge testing:
 
 ### On Pass
 - Comment posted with test results
-- Issue stays closed
-- `qa-failed` label removed (if present)
+- Actions from `on-success` are executed (close, add/remove labels, etc.)
 
 ### On Fail
 - Detailed comment with findings, screenshots, video
-- Issue reopened (if `reopen-on-failure: true`)
-- `qa-failed` label added
+- Actions from `on-failure` are executed (open, add/remove labels, etc.)
+
+### On Not Testable
+- Issue is skipped (not sent to human tester)
+- Actions from `on-not-testable` are executed (close, add/remove labels, comment, etc.)
 
 ## Workflow Triggers
 

@@ -29922,6 +29922,182 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
+/***/ 5531:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+/**
+ * Executor for parsed actions.
+ * Executes GitHub issue management operations based on parsed action DSL.
+ */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.executeActions = executeActions;
+const core = __importStar(__nccwpck_require__(7184));
+const issue_manager_1 = __nccwpck_require__(7638);
+const issue_commenter_1 = __nccwpck_require__(2143);
+/**
+ * Execute a list of parsed actions on an issue.
+ *
+ * @example
+ * await executeActions(
+ *   [{ type: 'close' }, { type: 'add-label', value: 'released' }],
+ *   { githubToken: 'xxx', issueNumber: 123 }
+ * );
+ */
+async function executeActions(actions, context) {
+    if (actions.length === 0)
+        return;
+    core.info(`Executing ${actions.length} action(s) on issue #${context.issueNumber}`);
+    for (const action of actions) {
+        try {
+            switch (action.type) {
+                case 'close':
+                    await (0, issue_manager_1.ensureIssueClosed)(context.githubToken, context.issueNumber);
+                    break;
+                case 'open':
+                    await (0, issue_manager_1.reopenIssue)(context.githubToken, context.issueNumber);
+                    break;
+                case 'add-label':
+                    if (action.value) {
+                        await (0, issue_manager_1.addLabel)(context.githubToken, context.issueNumber, action.value);
+                    }
+                    break;
+                case 'remove-label':
+                    if (action.value) {
+                        await (0, issue_manager_1.removeLabel)(context.githubToken, context.issueNumber, action.value);
+                    }
+                    break;
+                case 'comment':
+                    if (context.reason) {
+                        await (0, issue_commenter_1.postNotTestableComment)(context.githubToken, context.issueNumber, context.reason);
+                    }
+                    break;
+            }
+        }
+        catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            core.warning(`Failed to execute action "${action.type}" on issue #${context.issueNumber}: ${errorMessage}`);
+            // Continue with other actions even if one fails
+        }
+    }
+}
+//# sourceMappingURL=action-executor.js.map
+
+/***/ }),
+
+/***/ 837:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * Parser for the action DSL.
+ *
+ * DSL syntax:
+ * - close: Close the issue
+ * - open: Reopen the issue
+ * - add-label:bug or add-label:"stage: QA": Add a label
+ * - remove-label:bug or remove-label:"stage: QA": Remove a label
+ * - comment: Post a comment with details
+ *
+ * @example 'close add-label:"stage: Released" remove-label:"stage: QA"'
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.parseActions = parseActions;
+const tokenizer_1 = __nccwpck_require__(3220);
+const VALID_ACTION_TYPES = ['close', 'open', 'add-label', 'remove-label', 'comment'];
+/**
+ * Parse an action DSL string into an array of actions.
+ *
+ * @example parseActions('close') -> [{ type: 'close' }]
+ * @example parseActions('add-label:bug') -> [{ type: 'add-label', value: 'bug' }]
+ * @example parseActions('close add-label:"stage: QA"')
+ *   -> [{ type: 'close' }, { type: 'add-label', value: 'stage: QA' }]
+ */
+function parseActions(actionString) {
+    if (!actionString?.trim())
+        return [];
+    const tokens = (0, tokenizer_1.tokenizeString)(actionString);
+    const actions = [];
+    for (const token of tokens) {
+        const colonIndex = token.indexOf(':');
+        if (colonIndex === -1) {
+            // Simple action: close, open, comment
+            const type = token.toLowerCase();
+            if (!VALID_ACTION_TYPES.includes(type)) {
+                throw new Error(`Unknown action: "${token}". Valid actions: ${VALID_ACTION_TYPES.join(', ')}`);
+            }
+            actions.push({ type });
+        }
+        else {
+            // Action with value: add-label:x, remove-label:x
+            const type = token.substring(0, colonIndex).toLowerCase();
+            const rawValue = token.substring(colonIndex + 1);
+            const value = (0, tokenizer_1.stripQuotes)(rawValue);
+            if (!VALID_ACTION_TYPES.includes(type)) {
+                throw new Error(`Unknown action: "${type}". Valid actions: ${VALID_ACTION_TYPES.join(', ')}`);
+            }
+            if ((type === 'add-label' || type === 'remove-label') && !value) {
+                throw new Error(`${type} requires a value (e.g., ${type}:bug or ${type}:"stage: QA")`);
+            }
+            actions.push({ type, value });
+        }
+    }
+    return actions;
+}
+//# sourceMappingURL=action-parser.js.map
+
+/***/ }),
+
+/***/ 7755:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.executeActions = exports.parseActions = void 0;
+var action_parser_1 = __nccwpck_require__(837);
+Object.defineProperty(exports, "parseActions", ({ enumerable: true, get: function () { return action_parser_1.parseActions; } }));
+var action_executor_1 = __nccwpck_require__(5531);
+Object.defineProperty(exports, "executeActions", ({ enumerable: true, get: function () { return action_executor_1.executeActions; } }));
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
 /***/ 4174:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -30558,6 +30734,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.postTestResultComment = postTestResultComment;
+exports.postNotTestableComment = postNotTestableComment;
 const github = __importStar(__nccwpck_require__(5683));
 const core = __importStar(__nccwpck_require__(7184));
 const shared_1 = __nccwpck_require__(5656);
@@ -30582,6 +30759,29 @@ async function postTestResultComment(githubToken, issueNumber, testResult, analy
         body: comment,
     });
     core.info(`Posted test result comment to issue #${issueNumber}`);
+}
+/**
+ * Post a comment explaining why an issue was deemed not testable
+ */
+async function postNotTestableComment(githubToken, issueNumber, reason) {
+    const octokit = github.getOctokit(githubToken);
+    const { owner, repo } = github.context.repo;
+    const comment = `## QA Test Skipped
+
+This issue was analyzed but deemed **not testable** by our QA testing system.
+
+**Reason:** ${reason}
+
+---
+*Powered by [Runhuman](https://runhuman.com)*`;
+    core.debug(`Posting not-testable comment to issue #${issueNumber}`);
+    await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: issueNumber,
+        body: comment,
+    });
+    core.info(`Posted not-testable comment to issue #${issueNumber}`);
 }
 //# sourceMappingURL=issue-commenter.js.map
 
@@ -30700,46 +30900,7 @@ exports.queryIssuesWithFilter = queryIssuesWithFilter;
 exports.getIssuesByNumbers = getIssuesByNumbers;
 const github = __importStar(__nccwpck_require__(5683));
 const core = __importStar(__nccwpck_require__(7184));
-/**
- * Tokenize filter string, respecting quoted values.
- * Splits by whitespace BUT preserves quoted strings.
- *
- * @example tokenizeFilter('state:open label:bug') -> ['state:open', 'label:bug']
- * @example tokenizeFilter('label:"stage: QA"') -> ['label:"stage: QA"']
- * @example tokenizeFilter('label:"has spaces" state:open') -> ['label:"has spaces"', 'state:open']
- */
-function tokenizeFilter(filter) {
-    const tokens = [];
-    let current = '';
-    let inQuotes = false;
-    for (const char of filter.trim()) {
-        if (char === '"') {
-            inQuotes = !inQuotes;
-            current += char;
-        }
-        else if (char === ' ' && !inQuotes) {
-            if (current) {
-                tokens.push(current);
-                current = '';
-            }
-        }
-        else {
-            current += char;
-        }
-    }
-    if (current)
-        tokens.push(current);
-    return tokens;
-}
-/**
- * Strip surrounding quotes from a value if present.
- */
-function stripQuotes(value) {
-    if (value.startsWith('"') && value.endsWith('"')) {
-        return value.slice(1, -1);
-    }
-    return value;
-}
+const tokenizer_1 = __nccwpck_require__(3220);
 /**
  * Parse a filter query string into IssueFilterOptions
  *
@@ -30761,7 +30922,7 @@ function parseIssueFilter(filter) {
     const options = {
         state: 'open', // Default to open issues
     };
-    const tokens = tokenizeFilter(filter);
+    const tokens = (0, tokenizer_1.tokenizeString)(filter);
     for (const token of tokens) {
         const lowerToken = token.toLowerCase();
         // Handle 'all' shorthand
@@ -30818,7 +30979,7 @@ function parseIssueFilter(filter) {
                 break;
             case 'label':
                 // Strip quotes from value if present (for labels with special characters like "stage: QA")
-                const labelValue = stripQuotes(value);
+                const labelValue = (0, tokenizer_1.stripQuotes)(value);
                 options.labels = labelValue.split(',').map(l => l.trim()).filter(Boolean);
                 break;
             default:
@@ -31724,6 +31885,7 @@ exports.parseInputs = parseInputs;
 const core = __importStar(__nccwpck_require__(7184));
 const github = __importStar(__nccwpck_require__(5683));
 const issue_filter_1 = __nccwpck_require__(5447);
+const action_parser_1 = __nccwpck_require__(837);
 /**
  * Parse and validate action inputs
  */
@@ -31734,10 +31896,6 @@ function parseInputs() {
     const qaLabel = core.getInput('qa-label') || 'qa-test';
     const autoDetect = core.getInput('auto-detect') !== 'false';
     const targetDurationMinutesStr = core.getInput('target-duration-minutes') || '5';
-    const reopenOnFailure = core.getInput('reopen-on-failure') !== 'false';
-    const failureLabel = core.getInput('failure-label') || 'qa-failed';
-    const removeFailureLabelOnSuccess = core.getInput('remove-failure-label-on-success') !== 'false';
-    const closeOnSuccess = core.getInput('close-on-success') !== 'false';
     const issueNumberStr = core.getInput('issue-number');
     const issueFilterStr = core.getInput('issue-filter');
     const maxIssuesStr = core.getInput('max-issues') || '10';
@@ -31746,6 +31904,10 @@ function parseInputs() {
     const testMerges = core.getInput('test-merges') !== 'false';
     const autoModeOnlyMissingMedia = core.getInput('auto-mode-only-missing-media') === 'true';
     const screenSizeStr = core.getInput('screen-size') || 'desktop';
+    // New action DSL inputs
+    const onNotTestable = core.getInput('on-not-testable') || '';
+    const onSuccess = core.getInput('on-success') || '';
+    const onFailure = core.getInput('on-failure') || '';
     // Validate API key format
     if (!apiKey.startsWith('qa_live_')) {
         throw new Error('Invalid API key format. API keys must start with "qa_live_". ' +
@@ -31820,6 +31982,16 @@ function parseInputs() {
             throw error;
         }
     }
+    // Validate action DSL inputs (will throw if invalid)
+    if (onNotTestable) {
+        (0, action_parser_1.parseActions)(onNotTestable);
+    }
+    if (onSuccess) {
+        (0, action_parser_1.parseActions)(onSuccess);
+    }
+    if (onFailure) {
+        (0, action_parser_1.parseActions)(onFailure);
+    }
     // Get current GitHub repo from context
     const { owner, repo } = github.context.repo;
     const githubRepo = `${owner}/${repo}`;
@@ -31830,10 +32002,6 @@ function parseInputs() {
         qaLabel,
         autoDetect,
         targetDurationMinutes,
-        reopenOnFailure,
-        failureLabel,
-        removeFailureLabelOnSuccess,
-        closeOnSuccess,
         issueNumbers,
         issueFilter,
         maxIssues,
@@ -31843,6 +32011,9 @@ function parseInputs() {
         testMerges,
         autoModeOnlyMissingMedia,
         screenSize,
+        onNotTestable,
+        onSuccess,
+        onFailure,
     };
 }
 /**
@@ -31930,12 +32101,12 @@ const linked_issues_1 = __nccwpck_require__(7783);
 const merge_detection_1 = __nccwpck_require__(2217);
 const pr_context_1 = __nccwpck_require__(715);
 const issue_commenter_1 = __nccwpck_require__(2143);
-const issue_manager_1 = __nccwpck_require__(7638);
 const issue_filter_1 = __nccwpck_require__(5447);
 const issue_comments_1 = __nccwpck_require__(1871);
 const analyze_issue_1 = __nccwpck_require__(4174);
 const analyze_merge_1 = __nccwpck_require__(8417);
 const run_test_1 = __nccwpck_require__(4338);
+const actions_1 = __nccwpck_require__(7755);
 /**
  * Main entry point for the action
  */
@@ -32134,9 +32305,19 @@ async function processIssue(issue, inputs, results, prContext) {
         result.analysis = analysis;
         // Check if testable
         if (!analysis.isTestable) {
-            core.info(`Issue #${issue.number} is not testable: ${analysis.reason}`);
+            const skipReason = analysis.reason || 'Not testable by human';
+            core.info(`Issue #${issue.number} is not testable: ${skipReason}`);
+            // Execute on-not-testable actions
+            if (inputs.onNotTestable) {
+                const actions = (0, actions_1.parseActions)(inputs.onNotTestable);
+                await (0, actions_1.executeActions)(actions, {
+                    githubToken: inputs.githubToken,
+                    issueNumber: issue.number,
+                    reason: skipReason,
+                });
+            }
             result.status = 'skipped';
-            result.skipReason = analysis.reason || 'Not testable by human';
+            result.skipReason = skipReason;
             results.skippedIssues.push(issue.number);
             results.results.push(result);
             return;
@@ -32144,9 +32325,19 @@ async function processIssue(issue, inputs, results, prContext) {
         // Determine test URL: manual override takes precedence
         const testUrl = inputs.testUrl || analysis.testUrl;
         if (!testUrl) {
+            const skipReason = 'No testable URL found in issue (provide test-url input to override)';
             core.info(`Issue #${issue.number}: No testable URL found`);
+            // Execute on-not-testable actions (no URL is also not testable)
+            if (inputs.onNotTestable) {
+                const actions = (0, actions_1.parseActions)(inputs.onNotTestable);
+                await (0, actions_1.executeActions)(actions, {
+                    githubToken: inputs.githubToken,
+                    issueNumber: issue.number,
+                    reason: skipReason,
+                });
+            }
             result.status = 'skipped';
-            result.skipReason = 'No testable URL found in issue (provide test-url input to override)';
+            result.skipReason = skipReason;
             results.skippedIssues.push(issue.number);
             results.results.push(result);
             return;
@@ -32175,23 +32366,26 @@ async function processIssue(issue, inputs, results, prContext) {
         if (result.passed) {
             core.info(`Issue #${issue.number}: Test PASSED`);
             results.passedIssues.push(issue.number);
-            // Close issue and remove failure label
-            if (inputs.closeOnSuccess) {
-                await (0, issue_manager_1.ensureIssueClosed)(inputs.githubToken, issue.number);
-            }
-            if (inputs.removeFailureLabelOnSuccess && inputs.failureLabel) {
-                await (0, issue_manager_1.removeLabel)(inputs.githubToken, issue.number, inputs.failureLabel);
+            // Execute on-success actions
+            if (inputs.onSuccess) {
+                const actions = (0, actions_1.parseActions)(inputs.onSuccess);
+                await (0, actions_1.executeActions)(actions, {
+                    githubToken: inputs.githubToken,
+                    issueNumber: issue.number,
+                });
             }
         }
         else {
             core.info(`Issue #${issue.number}: Test FAILED`);
             results.failedIssues.push(issue.number);
-            // Reopen issue and add failure label
-            if (inputs.reopenOnFailure) {
-                await (0, issue_manager_1.reopenIssue)(inputs.githubToken, issue.number);
-            }
-            if (inputs.failureLabel) {
-                await (0, issue_manager_1.addLabel)(inputs.githubToken, issue.number, inputs.failureLabel);
+            // Execute on-failure actions
+            if (inputs.onFailure) {
+                const actions = (0, actions_1.parseActions)(inputs.onFailure);
+                await (0, actions_1.executeActions)(actions, {
+                    githubToken: inputs.githubToken,
+                    issueNumber: issue.number,
+                    reason: testResult.result?.explanation,
+                });
             }
         }
         results.testedIssues.push(issue.number);
@@ -32383,6 +32577,65 @@ async function createMergeSummary(results, mergeResult) {
 // Run the action
 run();
 //# sourceMappingURL=main.js.map
+
+/***/ }),
+
+/***/ 3220:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * Shared tokenizer utilities for parsing DSL strings.
+ * Handles quoted values like "stage: QA" that contain spaces or colons.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.tokenizeString = tokenizeString;
+exports.stripQuotes = stripQuotes;
+/**
+ * Tokenize a DSL string, respecting quoted values.
+ * Splits by whitespace BUT preserves quoted strings.
+ *
+ * @example tokenizeString('state:open label:bug') -> ['state:open', 'label:bug']
+ * @example tokenizeString('label:"stage: QA"') -> ['label:"stage: QA"']
+ * @example tokenizeString('close add-label:"has spaces"') -> ['close', 'add-label:"has spaces"']
+ */
+function tokenizeString(input) {
+    const tokens = [];
+    let current = '';
+    let inQuotes = false;
+    for (const char of input.trim()) {
+        if (char === '"') {
+            inQuotes = !inQuotes;
+            current += char;
+        }
+        else if (char === ' ' && !inQuotes) {
+            if (current) {
+                tokens.push(current);
+                current = '';
+            }
+        }
+        else {
+            current += char;
+        }
+    }
+    if (current)
+        tokens.push(current);
+    return tokens;
+}
+/**
+ * Strip surrounding double quotes from a value if present.
+ *
+ * @example stripQuotes('"stage: QA"') -> 'stage: QA'
+ * @example stripQuotes('bug') -> 'bug'
+ */
+function stripQuotes(value) {
+    if (value.startsWith('"') && value.endsWith('"')) {
+        return value.slice(1, -1);
+    }
+    return value;
+}
+//# sourceMappingURL=tokenizer.js.map
 
 /***/ }),
 
