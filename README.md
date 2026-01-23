@@ -163,6 +163,7 @@ issue-filter: 'state:open stale:30d unassigned'
 | unassigned | `unassigned` | No assignee |
 | assigned | `assigned:username` | Assigned to specific user |
 | label | `label:bug`, `label:bug,enhancement` | Has specific label(s) |
+| label (quoted) | `label:"stage: QA"` | Label with special characters (colons, spaces) |
 | no-media | `no-media` | Missing both screenshots and videos |
 | no-screenshots | `no-screenshots` | Missing screenshots/images |
 | no-video | `no-video` | Missing videos |
@@ -204,6 +205,15 @@ issue-filter: 'state:open stale:30d unassigned'
   with:
     api-key: ${{ secrets.RUNHUMAN_API_KEY }}
     issue-filter: 'state:open label:bug no-media'
+    test-url: ${{ vars.STAGING_URL }}
+```
+
+**Issues with labels containing colons or spaces:**
+```yaml
+- uses: runhuman/issue-tester-action@v1
+  with:
+    api-key: ${{ secrets.RUNHUMAN_API_KEY }}
+    issue-filter: 'state:open label:"stage: QA"'
     test-url: ${{ vars.STAGING_URL }}
 ```
 

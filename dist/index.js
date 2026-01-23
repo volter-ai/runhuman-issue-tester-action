@@ -30701,6 +30701,46 @@ exports.getIssuesByNumbers = getIssuesByNumbers;
 const github = __importStar(__nccwpck_require__(5683));
 const core = __importStar(__nccwpck_require__(7184));
 /**
+ * Tokenize filter string, respecting quoted values.
+ * Splits by whitespace BUT preserves quoted strings.
+ *
+ * @example tokenizeFilter('state:open label:bug') -> ['state:open', 'label:bug']
+ * @example tokenizeFilter('label:"stage: QA"') -> ['label:"stage: QA"']
+ * @example tokenizeFilter('label:"has spaces" state:open') -> ['label:"has spaces"', 'state:open']
+ */
+function tokenizeFilter(filter) {
+    const tokens = [];
+    let current = '';
+    let inQuotes = false;
+    for (const char of filter.trim()) {
+        if (char === '"') {
+            inQuotes = !inQuotes;
+            current += char;
+        }
+        else if (char === ' ' && !inQuotes) {
+            if (current) {
+                tokens.push(current);
+                current = '';
+            }
+        }
+        else {
+            current += char;
+        }
+    }
+    if (current)
+        tokens.push(current);
+    return tokens;
+}
+/**
+ * Strip surrounding quotes from a value if present.
+ */
+function stripQuotes(value) {
+    if (value.startsWith('"') && value.endsWith('"')) {
+        return value.slice(1, -1);
+    }
+    return value;
+}
+/**
  * Parse a filter query string into IssueFilterOptions
  *
  * Supported syntax:
@@ -30710,17 +30750,18 @@ const core = __importStar(__nccwpck_require__(7184));
  * - active:7d (has activity in last 7 days)
  * - unassigned
  * - assigned:username
- * - label:bug or label:bug,enhancement
+ * - label:bug or label:bug,enhancement or label:"stage: QA"
  * - all (shorthand for state:open)
  *
  * @example parseIssueFilter('state:open age:>30d unassigned')
  * @example parseIssueFilter('state:open stale:7d label:bug,needs-testing')
+ * @example parseIssueFilter('state:open label:"stage: QA"')
  */
 function parseIssueFilter(filter) {
     const options = {
         state: 'open', // Default to open issues
     };
-    const tokens = filter.trim().split(/\s+/);
+    const tokens = tokenizeFilter(filter);
     for (const token of tokens) {
         const lowerToken = token.toLowerCase();
         // Handle 'all' shorthand
@@ -30776,7 +30817,9 @@ function parseIssueFilter(filter) {
                 options.assignee = value;
                 break;
             case 'label':
-                options.labels = value.split(',').map(l => l.trim()).filter(Boolean);
+                // Strip quotes from value if present (for labels with special characters like "stage: QA")
+                const labelValue = stripQuotes(value);
+                options.labels = labelValue.split(',').map(l => l.trim()).filter(Boolean);
                 break;
             default:
                 core.warning(`Unknown filter key: ${key}`);
@@ -34769,6 +34812,10 @@ const webRoutes = {
     jobs: defineRoute('/dashboard/:projectId/jobs'),
     /** Single job detail page */
     job: defineRoute('/dashboard/:projectId/jobs/:jobId'),
+    /** Templates page */
+    templates: defineRoute('/dashboard/:projectId/templates'),
+    /** Single template detail (modal) */
+    template: defineRoute('/dashboard/:projectId/templates/:templateId'),
     /** GitHub issues page */
     issues: defineRoute('/dashboard/:projectId/issues'),
     /** Single issue detail (modal) */
@@ -34843,6 +34890,10 @@ const apiRoutes = {
     projectJobs: defineRoute('/projects/:projectId/jobs'),
     /** Get API keys for a project */
     projectApiKeys: defineRoute('/projects/:projectId/api-keys'),
+    /** List templates for a project (GET) or create template (POST) */
+    projectTemplates: defineRoute('/projects/:projectId/templates'),
+    /** Get/update/delete specific template */
+    projectTemplate: defineRoute('/projects/:projectId/templates/:templateId'),
     /** Bulk create projects from GitHub repos */
     bulkCreateProjects: defineRoute('/projects/bulk'),
     // ============================================

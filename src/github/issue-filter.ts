@@ -19,6 +19,47 @@ export interface IssueFilterOptions {
 }
 
 /**
+ * Tokenize filter string, respecting quoted values.
+ * Splits by whitespace BUT preserves quoted strings.
+ *
+ * @example tokenizeFilter('state:open label:bug') -> ['state:open', 'label:bug']
+ * @example tokenizeFilter('label:"stage: QA"') -> ['label:"stage: QA"']
+ * @example tokenizeFilter('label:"has spaces" state:open') -> ['label:"has spaces"', 'state:open']
+ */
+function tokenizeFilter(filter: string): string[] {
+  const tokens: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (const char of filter.trim()) {
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      current += char;
+    } else if (char === ' ' && !inQuotes) {
+      if (current) {
+        tokens.push(current);
+        current = '';
+      }
+    } else {
+      current += char;
+    }
+  }
+
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+/**
+ * Strip surrounding quotes from a value if present.
+ */
+function stripQuotes(value: string): string {
+  if (value.startsWith('"') && value.endsWith('"')) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+/**
  * Parse a filter query string into IssueFilterOptions
  *
  * Supported syntax:
@@ -28,18 +69,19 @@ export interface IssueFilterOptions {
  * - active:7d (has activity in last 7 days)
  * - unassigned
  * - assigned:username
- * - label:bug or label:bug,enhancement
+ * - label:bug or label:bug,enhancement or label:"stage: QA"
  * - all (shorthand for state:open)
  *
  * @example parseIssueFilter('state:open age:>30d unassigned')
  * @example parseIssueFilter('state:open stale:7d label:bug,needs-testing')
+ * @example parseIssueFilter('state:open label:"stage: QA"')
  */
 export function parseIssueFilter(filter: string): IssueFilterOptions {
   const options: IssueFilterOptions = {
     state: 'open', // Default to open issues
   };
 
-  const tokens = filter.trim().split(/\s+/);
+  const tokens = tokenizeFilter(filter);
 
   for (const token of tokens) {
     const lowerToken = token.toLowerCase();
@@ -108,7 +150,9 @@ export function parseIssueFilter(filter: string): IssueFilterOptions {
         break;
 
       case 'label':
-        options.labels = value.split(',').map(l => l.trim()).filter(Boolean);
+        // Strip quotes from value if present (for labels with special characters like "stage: QA")
+        const labelValue = stripQuotes(value);
+        options.labels = labelValue.split(',').map(l => l.trim()).filter(Boolean);
         break;
 
       default:
