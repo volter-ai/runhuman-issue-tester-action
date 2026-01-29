@@ -30441,7 +30441,7 @@ async function createJob(apiKey, apiUrl, request) {
  * Get the status of a job
  */
 async function getJobStatus(apiKey, apiUrl, jobId) {
-    const endpoint = `${apiUrl}/api/jobs/${jobId}`;
+    const endpoint = `${apiUrl}/api/job/${jobId}`;
     let response;
     try {
         response = await fetch(endpoint, {
@@ -35082,6 +35082,8 @@ const webRoutes = {
     // ============================================
     // External/public routes
     // ============================================
+    /** Quick start flow for new users (pre-auth) */
+    quickStart: defineRoute('/start'),
     /** Public job view with token-secured access */
     publicJob: defineRoute('/j/:jobId/:token'),
     /** Documentation quick start */
@@ -35196,6 +35198,26 @@ const apiRoutes = {
     githubBulkTest: defineRoute('/github/bulk-test'),
     /** GitHub App webhooks (receives issue_comment events etc.) */
     githubWebhooks: defineRoute('/github/webhooks'),
+    // ============================================
+    // Auth endpoints (Clerk-based)
+    // ============================================
+    /** Sync user data from Clerk after sign-in */
+    authSync: defineRoute('/auth/sync'),
+    /** Get current user info */
+    authMe: defineRoute('/auth/me'),
+    /** Mark user as startup (bonus tokens) */
+    authStartup: defineRoute('/auth/startup'),
+    /** Delete user account and all associated data */
+    authDeleteAccount: defineRoute('/auth/account'),
+    // ============================================
+    // Token endpoints
+    // ============================================
+    /** Get token balance */
+    tokensBalance: defineRoute('/tokens/balance'),
+    /** Get token transaction history */
+    tokensTransactions: defineRoute('/tokens/transactions'),
+    /** Contact us for more tokens */
+    tokensContact: defineRoute('/tokens/contact'),
     // ============================================
     // Other endpoints
     // ============================================
